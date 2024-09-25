@@ -1,27 +1,28 @@
+using System.Threading.Tasks.Dataflow;
+using CS120.Utils;
+using NAudio.Utils;
 using NAudio.Wave;
 
 namespace CS120;
 
-class AudioManager
+public class AudioManager
 {
 
     public static string[] ListAsioDevice()
     {
         return AsioOut.GetDriverNames();
     }
+
     public async Task
     Play(IWaveProvider audioProvider, string deviceName, CancellationToken ct, int inputChannelOffset = 0)
     {
 
         using var outputDevice = new AsioOut(deviceName) { AutoStop = true, InputChannelOffset = inputChannelOffset };
+
         ct.Register(() => outputDevice.Stop());
 
         var tsc = new TaskCompletionSource();
-        outputDevice.PlaybackStopped += (s, e) =>
-        {
-            Console.WriteLine(outputDevice);
-            tsc.SetResult();
-        };
+        outputDevice.PlaybackStopped += (s, e) => tsc.SetResult();
 
         outputDevice.Init(audioProvider);
         outputDevice.Play();
@@ -44,8 +45,6 @@ class AudioManager
         IWaveProvider? audioProvider = null
     )
     {
-        Console.WriteLine(Directory.GetCurrentDirectory());
-
         using var asioOut = new AsioOut(deviceName) { InputChannelOffset = inputChannelOffset };
         ct.Register(() => asioOut.Stop());
 
@@ -72,8 +71,6 @@ class AudioManager
             {
                 writer.Write(buffer[i]);
             }
-            // x.Writer.var count = e.GetAsInterleavedSamples(buffer);
-            // fileWriter.WriteSamples(buffer, 0, count);
         };
 
         var tsc = new TaskCompletionSource();
@@ -109,16 +106,13 @@ class AudioManager
 
         using var outputDevice = new T();
 
-        ct.Register(() => outputDevice.Stop());
-
         var tsc = new TaskCompletionSource();
-        outputDevice.PlaybackStopped += (s, e) =>
-        {
-            tsc.SetResult();
-        };
+        outputDevice.PlaybackStopped += (s, e) => tsc.SetResult();
 
         outputDevice.Init(audioProvider);
         outputDevice.Play();
+
+        ct.Register(() => outputDevice.Stop());
 
         await tsc.Task;
     }
@@ -133,15 +127,14 @@ class AudioManager
     public async Task Record(Stream audioStream, IWaveIn recorder, CancellationToken ct)
     {
 
-        ct.Register(() => recorder.StopRecording());
-
-        recorder.DataAvailable += (s, e) =>
-        { audioStream.Write(e.Buffer, 0, e.BytesRecorded); };
+        recorder.DataAvailable += (s, e) => audioStream.Write(e.Buffer, 0, e.BytesRecorded);
 
         var tsc = new TaskCompletionSource();
         recorder.RecordingStopped += (s, e) => tsc.SetResult();
 
         recorder.StartRecording();
+
+        ct.Register(() => recorder.StopRecording());
 
         await tsc.Task;
     }
@@ -153,5 +146,20 @@ class AudioManager
         using var fileWriter = new WaveFileWriter(recordFile, recorder.WaveFormat);
 
         await Record(fileWriter, recorder, ct);
+    }
+
+    public async Task RecordThenPlay<TWaveIn, TWaveOut>(CancellationToken[] ct)
+        where TWaveIn : IWaveIn, new()
+        where TWaveOut : IWavePlayer, new()
+    {
+        if (ct.Length != 2)
+        {
+            throw new ArgumentException("Must have 2 CancellationToken");
+        }
+
+        using var recorder = new TWaveIn();
+        using var stream = new SlidingStream();
+        await Record(stream, recorder, ct[0]);
+        await Play<TWaveOut>(new StreamWaveProvider(recorder.WaveFormat, stream), ct[1]);
     }
 }
