@@ -9,16 +9,16 @@ using NAudio.Wave;
 
 namespace CS120.TxRx;
 
-public interface IReceiver<TPacket>
+public interface IReceiver
 {
     Stream StreamIn { get; }
-    Channel<TPacket> PacketChannel { get; }
+    Channel<IPacket> PacketChannel { get; }
     Task Execute(CancellationToken ct);
 }
 
-public class Receiver<TDemodulator, TPacket, TPreamble> : IReceiver<TPacket>, IDisposable
-    where TDemodulator : IDemodulator<TDemodulator>
-    where TPacket : IPacket<TPacket>
+public class Receiver<TDemodulator, TPacket, TPreamble> : IReceiver, IDisposable
+    where TDemodulator : IDemodulator
+    where TPacket : IPacket
     where TPreamble : IPreamble
 {
 
@@ -28,7 +28,7 @@ public class Receiver<TDemodulator, TPacket, TPreamble> : IReceiver<TPacket>, ID
     private readonly ISampleProvider sampleProvider;
 
     public Stream StreamIn { get; init; }
-    public Channel<TPacket> PacketChannel { get; init; } = Channel.CreateUnbounded<TPacket>();
+    public Channel<IPacket> PacketChannel { get; init; } = Channel.CreateUnbounded<IPacket>();
 
     public Receiver(WaveFormat waveFormat)
     {

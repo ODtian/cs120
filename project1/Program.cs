@@ -20,7 +20,13 @@ class Program
     // static Channel<CancellationTokenSource> crtlCts;
     public static DFSKSymbolOption option =
         new() { NumSymbols = 2, NumSamplesPerSymbol = 40, SampleRate = 48000, Freq = 4_800 };
-
+    public static ChirpSymbolOption chirpOption = new ChirpSymbolOption {
+        NumSymbols = 2,
+        NumSamplesPerSymbol = 220, // Read config or something
+        SampleRate = 48_000,
+        FreqA = 3_000, // Read config or something
+        FreqB = 6_000  // Read config or something
+    };
     static byte[] GenerateData(int length)
     {
         var fragment = new byte[] {
@@ -85,7 +91,7 @@ class Program
         return samples.ToArray();
     }
 
-    static IReceiver<RawPacket> GetFileReciver(string filePath)
+    static IReceiver GetFileReciver(string filePath)
     {
         using var fileReader = new WaveFileReader(filePath);
         var receiver = new Receiver<DFSKDemodulator, RawPacket, ChirpPreamble>(fileReader.WaveFormat);
@@ -96,7 +102,7 @@ class Program
         return receiver;
     }
 
-    static IReceiver<RawPacket> GetRecorderReciver()
+    static IReceiver GetRecorderReciver()
     {
         WaveFormat receivedFormat;
         using (var capture = new WasapiCapture())
@@ -193,22 +199,25 @@ class Program
         rootCommand.SetHandler(
             async () =>
             {
-                var data = GenerateData(1000);
+                var data = GenerateData(10);
                 var samples = GenerateSamples(data);
-                WriteSamplesToFile("assets/samples.wav", samples);
+                WriteSamplesToFile("../matlab/samples.wav", samples);
 
                 Console.WriteLine("start");
 
-                var receiver = GetFileReciver("assets/recorded.wav");
-                var _ = Task.Run(() => receiver.Execute(CancellationToken.None));
+                // var receiver = GetFileReciver("assets/recorded.wav");
+                var receiver = GetRecorderReciver();
 
+                var rec = audioManager.Record<WasapiCapture>(receiver.StreamIn, CancellationToken.None);
+
+                var x = Task.Run(() => receiver.Execute(CancellationToken.None));
                 Console.WriteLine("end");
 
                 await foreach (var packet in receiver.PacketChannel.Reader.ReadAllAsync())
                 {
                     foreach (var d in packet.Bytes)
                     {
-                        Console.WriteLine(d);
+                        Console.WriteLine(Convert.ToString(d, 2));
                     }
                 }
             }

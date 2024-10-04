@@ -17,13 +17,7 @@ public readonly struct ChirpPreamble : IPreamble
 
     public static IPreamble Create(WaveFormat waveFormat)
     {
-        var option = new ChirpSymbolOption {
-            NumSymbols = 2,
-            NumSamplesPerSymbol = 220, // Read config or something
-            SampleRate = waveFormat.SampleRate,
-            FreqA = 3_000, // Read config or something
-            FreqB = 6_000  // Read config or something
-        };
+        var option = Program.chirpOption with { SampleRate = waveFormat.SampleRate };
 
         var symbols = ChirpSymbol.Get(option);
 

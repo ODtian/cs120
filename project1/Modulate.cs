@@ -8,17 +8,21 @@ namespace CS120.Modulate;
 
 public interface IModulator
 {
-    static abstract float[] Modulate(BlockingCollection<byte> dataBuffer);
+    static abstract IDemodulator Create(WaveFormat waveFormat);
+    float[] Modulate(BlockingCollection<byte> dataBuffer);
 }
 
-public interface IDemodulator<TSelf>
+public interface IDemodulator
 {
     // static abstract void Demodulate(BlockingCollection<float> sampleBuffer, Span<byte> buffer);
-    static abstract TSelf Create(WaveFormat waveFormat);
+    static abstract IDemodulator Create(WaveFormat waveFormat);
+    // {
+    //     throw new NotImplementedException();
+    // }
     byte[] Demodulate(BlockingCollection<float> sampleBuffer);
 }
 
-public struct DFSKDemodulator : IDemodulator<DFSKDemodulator>
+public struct DFSKDemodulator : IDemodulator
 {
 
     public readonly DFSKSymbolOption option;
@@ -99,7 +103,7 @@ public struct DFSKDemodulator : IDemodulator<DFSKDemodulator>
         }
     }
 
-    public static DFSKDemodulator Create(WaveFormat waveFormat)
+    public static IDemodulator Create(WaveFormat waveFormat)
     {
         return new DFSKDemodulator(waveFormat);
     }
