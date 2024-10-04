@@ -4,7 +4,8 @@ using NAudio.Wave.Asio;
 using System.CommandLine;
 using System.CommandLine.Parsing;
 using System.Threading.Channels;
-
+using System.IO.Pipelines;
+using System.IO.Pipes;
 namespace CS120;
 
 class Program

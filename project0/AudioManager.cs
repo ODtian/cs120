@@ -1,6 +1,5 @@
-using System.Threading.Tasks.Dataflow;
+using System.IO.Pipelines;
 using CS120.Utils;
-using NAudio.Utils;
 using NAudio.Wave;
 
 namespace CS120;
@@ -139,6 +138,23 @@ public class AudioManager
         await tsc.Task;
     }
 
+    public async Task Record<T>(Stream audioStream, CancellationToken ct)
+        where T : IWaveIn, new()
+    {
+        using var recorder = new T();
+
+        recorder.DataAvailable += (s, e) => audioStream.Write(e.Buffer, 0, e.BytesRecorded);
+
+        var tsc = new TaskCompletionSource();
+        recorder.RecordingStopped += (s, e) => tsc.SetResult();
+
+        recorder.StartRecording();
+
+        ct.Register(() => recorder.StopRecording());
+
+        await tsc.Task;
+    }
+
     public async Task Record<T>(string recordFile, CancellationToken ct)
         where T : IWaveIn, new()
     {
@@ -158,8 +174,14 @@ public class AudioManager
         }
 
         using var recorder = new TWaveIn();
-        using var stream = new SlidingStream();
-        await Record(stream, recorder, ct[0]);
-        await Play<TWaveOut>(new StreamWaveProvider(recorder.WaveFormat, stream), ct[1]);
+        var pipe = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
+
+        using (var streamIn = pipe.Writer.AsStream())
+        {
+            await Record(streamIn, recorder, ct[0]);
+        }
+
+        using var streamOut = pipe.Reader.AsStream();
+        await Play<TWaveOut>(new StreamWaveProvider(recorder.WaveFormat, streamOut), ct[1]);
     }
 }
