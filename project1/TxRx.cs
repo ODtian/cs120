@@ -49,11 +49,11 @@ public class Receiver<TDemodulator, TPacket, TPreamble> : IReceiver, IDisposable
     {
         try
         {
-            var buffer = new float[10240];
+            var buffer = new float[1024];
             while (true)
             {
                 var numSample = sampleProvider.Read(buffer, 0, buffer.Length);
-                Console.WriteLine(sampleBuffer.Count);
+                // Console.WriteLine(sampleBuffer.Count);
                 if (numSample == 0)
                 {
                     Console.WriteLine("stream close");

@@ -18,8 +18,9 @@ class Program
     // Instrumental.mp3"; static readonly string defaultRecordFileName = "assets/recorded.wav";
 
     // static Channel<CancellationTokenSource> crtlCts;
-    public static DFSKSymbolOption option =
+    public static DPSKSymbolOption option =
         new() { NumSymbols = 2, NumSamplesPerSymbol = 20, SampleRate = 48000, Freq = 4_800 };
+
     public static ChirpSymbolOption chirpOption = new ChirpSymbolOption {
         NumSymbols = 2,
         NumSamplesPerSymbol = 220, // Read config or something
@@ -27,6 +28,9 @@ class Program
         FreqA = 3_000, // Read config or something
         FreqB = 6_000  // Read config or something
     };
+
+    public static float corrThreshold = 0.03f;
+    public static int maxPeakFalling = 220;
     static byte[] GenerateData(int length)
     {
         var fragment = new byte[] {
@@ -94,7 +98,7 @@ class Program
     static IReceiver GetFileReciver(string filePath)
     {
         using var fileReader = new WaveFileReader(filePath);
-        var receiver = new Receiver<DFSKDemodulator, RawPacket, ChirpPreamble>(fileReader.WaveFormat);
+        var receiver = new Receiver<DPSKDemodulator, RawPacket, ChirpPreamble>(fileReader.WaveFormat);
 
         using var writer = receiver.StreamIn;
 
@@ -110,7 +114,7 @@ class Program
             receivedFormat = capture.WaveFormat;
             // Console.WriteLine(receivedFormat.SampleRate);
         }
-        var receiver = new Receiver<DFSKDemodulator, RawPacket, ChirpPreamble>(receivedFormat);
+        var receiver = new Receiver<DPSKDemodulator, RawPacket, ChirpPreamble>(receivedFormat);
         return receiver;
     }
 

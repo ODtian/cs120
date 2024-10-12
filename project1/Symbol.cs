@@ -52,16 +52,16 @@ public class ChirpSymbol : ISymbol<ChirpSymbolOption>
         return result;
     }
 }
-public readonly struct DFSKSymbolOption : ISymbolOption
+public readonly struct DPSKSymbolOption : ISymbolOption
 {
     public int NumSymbols { get; init; }
     public int NumSamplesPerSymbol { get; init; }
     public int SampleRate { get; init; }
     public float Freq { get; init; }
 }
-public class DFSKSymbol : ISymbol<DFSKSymbolOption>
+public class DFSKSymbol : ISymbol<DPSKSymbolOption>
 {
-    public static float[][] Get(DFSKSymbolOption symbolOption)
+    public static float[][] Get(DPSKSymbolOption symbolOption)
     {
         // float[][] symbols = new float[12];
         var result = new float [symbolOption.NumSymbols][];

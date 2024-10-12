@@ -22,15 +22,15 @@ public interface IDemodulator
     byte[] Demodulate(BlockingCollection<float> sampleBuffer);
 }
 
-public struct DFSKDemodulator : IDemodulator
+public struct DPSKDemodulator : IDemodulator
 {
 
-    public readonly DFSKSymbolOption option;
+    public readonly DPSKSymbolOption option;
     private readonly float[][] symbols;
 
     private const int lengthPartNumBits = 16;
 
-    DFSKDemodulator(WaveFormat waveFormat)
+    DPSKDemodulator(WaveFormat waveFormat)
     {
         option = Program.option with { SampleRate = waveFormat.SampleRate };
         // option = new() { NumSymbols = 2, NumSamplesPerSymbol = 24, SampleRate = waveFormat.SampleRate, Freq = 4_000
@@ -104,7 +104,7 @@ public struct DFSKDemodulator : IDemodulator
 
     public static IDemodulator Create(WaveFormat waveFormat)
     {
-        return new DFSKDemodulator(waveFormat);
+        return new DPSKDemodulator(waveFormat);
     }
 
     // symbols ahead are LSB
