@@ -3,19 +3,25 @@ using NWaves.Signals.Builders;
 
 namespace CS120.Symbol;
 
-public interface ISymbolOption
-{
-    public int NumSymbols { get; }
-    public int NumSamplesPerSymbol { get; }
-    public int SampleRate { get; }
-}
+// public interface ISymbolOption
+// {
+//     public int NumSymbols { get; }
+//     public int NumSamplesPerSymbol { get; }
+//     public int SampleRate { get; }
 // }
-public interface ISymbol<TOption>
-    where TOption : ISymbolOption {
-    public static abstract float[][] Get(TOption symbolOption);
+// }
+// public interface ISymbol<TOption>
+//     where TOption : ISymbolOption {
+//     float[][] Symbols { get; }
+//     // public static abstract float[][] Get(TOption symbolOption);
+// }
+public interface ISymbol
+{
+    float[][] Samples { get; }
+    // public static abstract float[][] Get(TOption symbolOption);
 }
 
-public readonly struct ChirpSymbolOption : ISymbolOption
+public readonly struct ChirpSymbolOption
 {
     public int NumSymbols { get; init; }
     public int NumSamplesPerSymbol { get; init; }
@@ -24,12 +30,11 @@ public readonly struct ChirpSymbolOption : ISymbolOption
     public float FreqB { get; init; }
 }
 
-public class ChirpSymbol : ISymbol<ChirpSymbolOption>
+public readonly struct ChirpSymbol : ISymbol
 {
-
-    public static float[][] Get(ChirpSymbolOption symbolOption)
+    public float[][] Samples { get; }
+    public ChirpSymbol(ChirpSymbolOption symbolOption)
     {
-        // float[][] symbols = new float[12];
         var result = new float [symbolOption.NumSymbols][];
         var builder = new ChirpBuilder();
 
@@ -40,30 +45,27 @@ public class ChirpSymbol : ISymbol<ChirpSymbolOption>
                       .SampledAt(symbolOption.SampleRate)
                       .OfLength(symbolOption.NumSamplesPerSymbol)
                       .Build();
-        // for (int i = 0; i < symbolOption.NumSymbols; i++)
         result[0] = sig.Samples;
 
         var sig_1 = sig.Copy();
         sig_1.Reverse();
         result[1] = (sig_1 * -1).Samples;
 
-        // }
-
-        return result;
+        Samples = result;
     }
 }
-public readonly struct DPSKSymbolOption : ISymbolOption
+public readonly struct DPSKSymbolOption
 {
     public int NumSymbols { get; init; }
     public int NumSamplesPerSymbol { get; init; }
     public int SampleRate { get; init; }
     public float Freq { get; init; }
 }
-public class DFSKSymbol : ISymbol<DPSKSymbolOption>
+public readonly struct DPSKSymbol : ISymbol
 {
-    public static float[][] Get(DPSKSymbolOption symbolOption)
+    public float[][] Samples { get; }
+    public DPSKSymbol(DPSKSymbolOption symbolOption)
     {
-        // float[][] symbols = new float[12];
         var result = new float [symbolOption.NumSymbols][];
 
         // for (int i = 0; i < symbolOption.NumSymbols; i++)
@@ -79,6 +81,6 @@ public class DFSKSymbol : ISymbol<DPSKSymbolOption>
 
         result[1] = (sig * -1).Samples;
 
-        return result;
+        Samples = result;
     }
 }

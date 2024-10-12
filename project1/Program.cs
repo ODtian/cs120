@@ -26,11 +26,14 @@ class Program
         NumSamplesPerSymbol = 220, // Read config or something
         SampleRate = 48_000,
         FreqA = 3_000, // Read config or something
-        FreqB = 6_000  // Read config or something
+        FreqB = 10_000 // Read config or something
     };
 
     public static float corrThreshold = 0.03f;
     public static int maxPeakFalling = 220;
+    public static float smoothedEnergyFactor = 1f / 64f;
+    public static int dataLengthInBit = 480;
+
     static byte[] GenerateData(int length)
     {
         var fragment = new byte[] {
@@ -69,16 +72,19 @@ class Program
 
     static float[] GenerateSamples(byte[] data)
     {
-        var symbols = DFSKSymbol.Get(option);
+        // var symbols = DFSKSymbol.Get(option);
+        // var symbols = DPSKSymbolOption.Get(option);
+        var symbols = new DPSKSymbol(option).Samples;
 
         var samples = new List<float>();
 
-        IPreamble? preamble = ChirpPreamble.Create(WaveFormat.CreateIeeeFloatWaveFormat(option.SampleRate, 1));
+        // IPreamble? preamble = ChirpPreamble.Create(WaveFormat.CreateIeeeFloatWaveFormat(option.SampleRate, 1));
+        var preamble = new ChirpPreamble(new ChirpSymbol(chirpOption));
 
         samples.AddRange(Enumerable.Range(0, 48000).Select(
             _ => 0f
         ));
-        samples.AddRange(preamble.PreambleData);
+        samples.AddRange(preamble.Samples);
 
         foreach (var d in data)
         {
@@ -98,7 +104,16 @@ class Program
     static IReceiver GetFileReciver(string filePath)
     {
         using var fileReader = new WaveFileReader(filePath);
-        var receiver = new Receiver<DPSKDemodulator, RawPacket, ChirpPreamble>(fileReader.WaveFormat);
+        var receiver = new Receiver(
+            fileReader.WaveFormat,
+            new PreambleDetection(
+                new ChirpPreamble(new ChirpSymbol(chirpOption with { SampleRate = fileReader.WaveFormat.SampleRate })),
+                corrThreshold,
+                smoothedEnergyFactor,
+                maxPeakFalling
+            ),
+            new DPSKDemodulator(new DPSKSymbol(option with { SampleRate = fileReader.WaveFormat.SampleRate }))
+        );
 
         using var writer = receiver.StreamIn;
 
@@ -114,7 +129,16 @@ class Program
             receivedFormat = capture.WaveFormat;
             // Console.WriteLine(receivedFormat.SampleRate);
         }
-        var receiver = new Receiver<DPSKDemodulator, RawPacket, ChirpPreamble>(receivedFormat);
+        var receiver = new Receiver(
+            receivedFormat,
+            new PreambleDetection(
+                new ChirpPreamble(new ChirpSymbol(chirpOption with { SampleRate = receivedFormat.SampleRate })),
+                corrThreshold,
+                smoothedEnergyFactor,
+                maxPeakFalling
+            ),
+            new DPSKDemodulator(new DPSKSymbol(option with { SampleRate = receivedFormat.SampleRate }))
+        );
         return receiver;
     }
 
@@ -123,6 +147,7 @@ class Program
         using var writer = new WaveFileWriter(filePath, WaveFormat.CreateIeeeFloatWaveFormat(48000, 1));
         writer.WriteSamples(samples, 0, samples.Length);
     }
+
     static void GenerateMatlabRecData(string filePath, string matFile)
     {
         var data = new List<float>();

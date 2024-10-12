@@ -7,54 +7,55 @@ using NAudio.Wave;
 namespace CS120.Preamble;
 public interface IPreamble
 {
-    float[] PreambleData { get; }
-    static abstract IPreamble Create(WaveFormat waveFormat);
+    float[] Samples { get; }
+    // static abstract IPreamble Create(WaveFormat waveFormat);
 }
 
-public readonly struct ChirpPreamble : IPreamble
+public readonly struct ChirpPreamble
+(ChirpSymbol symbols) : IPreamble
 {
-    public float[] PreambleData { get; init; }
-
-    public static IPreamble Create(WaveFormat waveFormat)
-    {
-        var option = Program.chirpOption with { SampleRate = waveFormat.SampleRate };
-
-        var symbols = ChirpSymbol.Get(option);
-
-        return new ChirpPreamble { PreambleData = [..symbols[0], ..symbols[1]] };
-    }
+    public float[] Samples { get; } = [..symbols.Samples[0], ..symbols.Samples[1]];
 }
 
-public struct PreambleDetection
+public readonly struct PreambleDetection
 {
-    const float smoothedEnergyFactor = 1f / 64f;
-    static float corrThreshold = Program.corrThreshold;
-    static int maxPeakFalling = Program.maxPeakFalling;
+    // const float smoothedEnergyFactor = 1f / 64f;
+    private readonly float smoothedEnergyFactor;
+    private readonly float corrThreshold;
+    private readonly int maxPeakFalling;
+    // static float corrThreshold = Program.corrThreshold;
+    // static int maxPeakFalling = Program.maxPeakFalling;
 
     private readonly IPreamble preamble;
     private readonly int preambleLength;
     // private float mmax = 0f;
     // private int inx = 0;
 
-    public PreambleDetection(IPreamble preamble)
+    public PreambleDetection(
+        IPreamble preamble, float corrThreshold = 0.05f, float smoothedEnergyFactor = 1f / 64f, int maxPeakFalling = 220
+    )
     {
+        this.corrThreshold = corrThreshold;
+        this.smoothedEnergyFactor = smoothedEnergyFactor;
+        this.maxPeakFalling = maxPeakFalling;
+
         this.preamble = preamble;
-        preambleLength = preamble.PreambleData.Length;
+        preambleLength = preamble.Samples.Length;
 
         Debug.Assert(preambleLength >= maxPeakFalling);
     }
-    public void DetectPreamble(BlockingCollection<float> sampleBuffer)
+
+    public readonly void DetectPreamble(BlockingCollection<float> sampleBuffer)
     {
+        var factor = smoothedEnergyFactor;
         var localMaxCorr = 0f;
-        var smoothedEnergy =
-            sampleBuffer.TakeBlocked(preambleLength - 1)
-                .Aggregate(
-                    0f, (acc, sample) => smoothedEnergyFactor * sample * sample + (1 - smoothedEnergyFactor) * acc
-                );
+
+        var smoothedEnergy = sampleBuffer.TakeBlocked(preambleLength - 1)
+                                 .Aggregate(0f, (acc, sample) => factor * sample * sample + (1 - factor) * acc);
 
         var restNum = -1;
 
-        ReadOnlySpan<float> preambleSpan = preamble.PreambleData.AsSpan();
+        ReadOnlySpan<float> preambleSpan = preamble.Samples.AsSpan();
 
         while (restNum != 0)
         {
