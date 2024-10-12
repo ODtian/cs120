@@ -28,7 +28,7 @@ public readonly struct ChirpPreamble : IPreamble
 public struct PreambleDetection
 {
     const float smoothedEnergyFactor = 1f / 64f;
-    const float corrThreshold = 0.05f;
+    const float corrThreshold = 0.23f;
     const int maxPeakFalling = 220;
 
     private readonly IPreamble preamble;

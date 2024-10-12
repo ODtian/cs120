@@ -19,7 +19,7 @@ class Program
 
     // static Channel<CancellationTokenSource> crtlCts;
     public static DFSKSymbolOption option =
-        new() { NumSymbols = 2, NumSamplesPerSymbol = 40, SampleRate = 48000, Freq = 4_800 };
+        new() { NumSymbols = 2, NumSamplesPerSymbol = 20, SampleRate = 48000, Freq = 4_800 };
     public static ChirpSymbolOption chirpOption = new ChirpSymbolOption {
         NumSymbols = 2,
         NumSamplesPerSymbol = 220, // Read config or something

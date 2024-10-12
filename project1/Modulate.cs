@@ -53,7 +53,7 @@ public struct DFSKDemodulator : IDemodulator
         // dataLengthInBit = Math.Min(2048, dataLengthInBit);
 
         Console.WriteLine($"dataLengthInBit {dataLengthInBit}");
-        dataLengthInBit = 8240;
+        dataLengthInBit = 480;
         var t1 = DateTime.Now;
 
         byte[]? data = new byte[(int)Math.Ceiling(dataLengthInBit / 8f)];
@@ -62,7 +62,6 @@ public struct DFSKDemodulator : IDemodulator
 
         for (int i = 0; i < data.Length; i++)
         {
-
             consuming.TakeInto(buffer);
             data[i] = Demodulate<byte>(buffer, 8);
         }
@@ -82,7 +81,7 @@ public struct DFSKDemodulator : IDemodulator
         }
 #endif
         int halfWindow = windowSize / 2;
-        float[] originalSamples = samples.ToArray(); // 复制原始数据以避免覆盖未处理的数据
+        float[] originalSamples = samples.ToArray();
 
         for (int i = 0; i < samples.Length; i++)
         {
