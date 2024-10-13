@@ -4,17 +4,6 @@ public interface IPacket
 {
     byte[] Bytes { get; }
 
-    bool CheckValid()
-    {
-        return true;
-    }
-    byte[] Extract()
-    {
-        var result = new byte[Bytes.Length];
-        Bytes.CopyTo(result.AsSpan());
-        return result;
-    }
-
     static virtual IPacket Create(byte[] bytes)
     {
         throw new NotImplementedException();
@@ -24,7 +13,7 @@ public interface IPacket
 public readonly struct EmptyPacket
 () : IPacket
 {
-    public byte[] Bytes { get; init; } = [];
+    public byte[] Bytes { get; } = [];
 
     public static IPacket Create(byte[] bytes)
     {

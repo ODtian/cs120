@@ -3,13 +3,20 @@ using System.Collections.Concurrent;
 using System.Numerics;
 using CS120.Symbol;
 using CS120.Extension;
+<<<<<<< HEAD
 using CS120.Preamble;
+=======
+using System.Diagnostics;
+>>>>>>> 897d10191a9594cf317069a890ae91a30ae084fa
 
 namespace CS120.Modulate;
 
 public interface IModulator
 {
+<<<<<<< HEAD
     static abstract IModulator Create(WaveFormat waveFormat);
+=======
+>>>>>>> 897d10191a9594cf317069a890ae91a30ae084fa
     float[] Modulate(BlockingCollection<byte> dataBuffer);
 }
 
@@ -67,50 +74,60 @@ public struct DPSKModulator : IModulator
 public interface IDemodulator
 {
     // static abstract void Demodulate(BlockingCollection<float> sampleBuffer, Span<byte> buffer);
-    static abstract IDemodulator Create(WaveFormat waveFormat);
+    // static abstract IDemodulator Create(WaveFormat waveFormat);
     // {
     //     throw new NotImplementedException();
     // }
     byte[] Demodulate(BlockingCollection<float> sampleBuffer);
 }
 
-public struct DPSKDemodulator : IDemodulator
+public readonly struct DPSKDemodulator : IDemodulator
 {
 
-    public readonly DPSKSymbolOption option;
-    private readonly float[][] symbols;
+    // public readonly DPSKSymbolOption option;
+    private readonly DPSKSymbol symbols;
+    private readonly int numSamplesPerSymbol;
 
-    private const int lengthPartNumBits = 16;
+    private readonly int dataLengthInBit = 16;
+    // private readonly int lengthPartNumBits = 16;
 
-    DPSKDemodulator(WaveFormat waveFormat)
+    public DPSKDemodulator(DPSKSymbol symbols, int dataLengthInBit = 440)
     {
-        option = Program.option with { SampleRate = waveFormat.SampleRate };
+        // option = Program.option with { SampleRate = waveFormat.SampleRate };
         // option = new() { NumSymbols = 2, NumSamplesPerSymbol = 24, SampleRate = waveFormat.SampleRate, Freq = 4_000
         // };
-        symbols = DFSKSymbol.Get(option);
+        this.symbols = symbols;
+        this.dataLengthInBit = dataLengthInBit;
+
+        var length = symbols.Samples[0].Length;
+#if DEBUG
+        Debug.Assert(symbols.Samples.All(s => s.Length == length));
+#endif
+        numSamplesPerSymbol = length;
     }
-    public byte[] Demodulate(BlockingCollection<float> sampleBuffer)
+
+    public readonly byte[] Demodulate(BlockingCollection<float> sampleBuffer)
 
     {
         var consuming = sampleBuffer.GetConsumingEnumerable();
-        var lengthPart = consuming.Take(option.NumSamplesPerSymbol * lengthPartNumBits).ToArray();
+        // var lengthPart = consuming.Take(numSamplesPerSymbol * lengthPartNumBits).ToArray();
 
-        Console.WriteLine($"lengthPart.Length {lengthPart.Length}");
+        // Console.WriteLine($"lengthPart.Length {lengthPart.Length}");
 
-        var dataLengthInBit = (int)Demodulate<ushort>(lengthPart, lengthPartNumBits);
+        // var dataLengthInBit = (int)Demodulate<ushort>(lengthPart, lengthPartNumBits);
 
-        Console.WriteLine($"dataLengthInBit a {Convert.ToString((byte)dataLengthInBit, 2)}");
-        Console.WriteLine($"dataLengthInBit b {Convert.ToString((byte)(dataLengthInBit >> 8), 2)}");
+        // Console.WriteLine($"dataLengthInBit a {Convert.ToString((byte)dataLengthInBit, 2)}");
+        // Console.WriteLine($"dataLengthInBit b {Convert.ToString((byte)(dataLengthInBit >> 8), 2)}");
 
-        // dataLengthInBit = Math.Min(2048, dataLengthInBit);
+        // // dataLengthInBit = Math.Min(2048, dataLengthInBit);
 
-        Console.WriteLine($"dataLengthInBit {dataLengthInBit}");
-        dataLengthInBit = 480;
+        // Console.WriteLine($"dataLengthInBit {dataLengthInBit}");
+        // dataLengthInBit = 480;
         var t1 = DateTime.Now;
 
         byte[]? data = new byte[(int)Math.Ceiling(dataLengthInBit / 8f)];
 
-        var buffer = new float[option.NumSamplesPerSymbol * 8];
+        var buffer = new float[numSamplesPerSymbol * 8];
 
         for (int i = 0; i < data.Length; i++)
         {
@@ -154,10 +171,10 @@ public struct DPSKDemodulator : IDemodulator
         }
     }
 
-    public static IDemodulator Create(WaveFormat waveFormat)
-    {
-        return new DPSKDemodulator(waveFormat);
-    }
+    // public static IDemodulator Create(WaveFormat waveFormat)
+    // {
+    //     return new DPSKDemodulator(waveFormat);
+    // }
 
     // symbols ahead are LSB
     private T Demodulate<T>(Span<float> samples, int numBits)
@@ -179,18 +196,18 @@ public struct DPSKDemodulator : IDemodulator
 
         for (int i = 0; i < numBits; i++)
         {
-            var offset = option.NumSamplesPerSymbol * i;
-            for (int j = 0; j < option.NumSamplesPerSymbol; j++)
+            var offset = numSamplesPerSymbol * i;
+            for (int j = 0; j < numSamplesPerSymbol; j++)
             {
-                samples[j + offset] *= symbols[0][j];
+                samples[j + offset] *= symbols.Samples[0][j];
             }
         }
         // Smooth(samples, 12);
         for (int i = 0; i < numBits; i++)
         {
             var energy = 0f;
-            var offset = option.NumSamplesPerSymbol * i;
-            for (int j = 0; j < option.NumSamplesPerSymbol; j++)
+            var offset = numSamplesPerSymbol * i;
+            for (int j = 0; j < numSamplesPerSymbol; j++)
             {
                 energy += samples[j + offset];
             }

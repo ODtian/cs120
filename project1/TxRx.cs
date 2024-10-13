@@ -64,32 +64,36 @@ public interface IReceiver
     Task Execute(CancellationToken ct);
 }
 
-public class Receiver<TDemodulator, TPacket, TPreamble> : IReceiver, IDisposable
-    where TDemodulator : IDemodulator
-    where TPacket : IPacket
-    where TPreamble : IPreamble
+public class Receiver : IReceiver, IDisposable
+// where TDemodulator : IDemodulator
+// where TPacket : IPacket
+// where TPreamble : IPreamble
 {
 
     private readonly Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
     private readonly BlockingCollection<float> sampleBuffer = [];
-    private readonly IPreamble preamble;
+    private readonly PreambleDetection preambleDetection;
+    private readonly IDemodulator demodulator;
     private readonly ISampleProvider sampleProvider;
 
-    public Stream StreamIn { get; init; }
-    public Channel<IPacket> PacketChannel { get; init; } = Channel.CreateUnbounded<IPacket>();
+    public Stream StreamIn { get; }
+    public Channel<IPacket> PacketChannel { get; } = Channel.CreateUnbounded<IPacket>();
 
-    public Receiver(WaveFormat waveFormat)
+    public Receiver(WaveFormat waveFormat, PreambleDetection preambleDetection, IDemodulator demodulator)
     {
         // Console.WriteLine(waveFormat);
-        StreamIn = pipe.Writer.AsStream();
 
-        preamble = TPreamble.Create(waveFormat);
+        this.preambleDetection = preambleDetection;
+        this.demodulator = demodulator;
         sampleProvider = new StreamWaveProvider(waveFormat, pipe.Reader.AsStream()).ToSampleProvider().ToMono();
+
+        StreamIn = pipe.Writer.AsStream();
     }
 
     public void Dispose()
     {
         sampleBuffer.Dispose();
+
         PacketChannel.Writer.Complete();
         pipe.Reader.Complete();
     }
@@ -123,8 +127,8 @@ public class Receiver<TDemodulator, TPacket, TPreamble> : IReceiver, IDisposable
     public async Task Execute(CancellationToken ct)
     {
         var fillTask = Task.Run(FillSample, ct);
-        var preambleDetect = new PreambleDetection(preamble);
-        var demodulator = TDemodulator.Create(sampleProvider.WaveFormat);
+        // var preambleDetect = new PreambleDetection(preamble);
+        // var demodulator = TDemodulator.Create(sampleProvider.WaveFormat);
 
         try
         {
@@ -132,7 +136,7 @@ public class Receiver<TDemodulator, TPacket, TPreamble> : IReceiver, IDisposable
             {
                 ct.ThrowIfCancellationRequested();
 
-                preambleDetect.DetectPreamble(sampleBuffer);
+                preambleDetection.DetectPreamble(sampleBuffer);
                 var data = demodulator.Demodulate(sampleBuffer);
                 // foreach (var d in data)
                 // {
@@ -140,7 +144,7 @@ public class Receiver<TDemodulator, TPacket, TPreamble> : IReceiver, IDisposable
                 // }
                 Console.WriteLine();
 
-                await PacketChannel.Writer.WriteAsync(TPacket.Create(data), ct);
+                await PacketChannel.Writer.WriteAsync(new RawPacket { Bytes = data }, ct);
             }
             await fillTask;
         }
