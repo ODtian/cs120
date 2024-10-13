@@ -9,6 +9,54 @@ using NAudio.Wave;
 
 namespace CS120.TxRx;
 
+public interface ITransmitter
+{
+    Stream StreamOut { get; }
+    Channel<byte[]> DataChannel { get; }
+    Task Execute(CancellationToken ct);
+}
+
+public class Transmitter<TModulator, TPacket, TPreamble> : ITransmitter, IDisposable
+    where TModulator : IModulator
+    where TPacket : IPacket
+    where TPreamble : IPreamble
+{
+    private readonly Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+    private readonly BlockingCollection<byte> dataBuffer = new();
+    private readonly IPreamble preamble;
+    private readonly IModulator modulator;
+
+    public Stream StreamOut { get; init; }
+    public Channel<byte[]> DataChannel { get; init; } = Channel.CreateUnbounded<byte[]>();
+
+    public Transmitter(WaveFormat waveFormat)
+    {
+        StreamOut = pipe.Writer.AsStream();
+        preamble = TPreamble.Create(waveFormat);
+        modulator = TModulator.Create(waveFormat);
+    }
+
+    public async Task Execute(CancellationToken ct)
+    {
+        await foreach (var data in DataChannel.Reader.ReadAllAsync(ct))
+        {
+            foreach (var d in data)
+            {
+                dataBuffer.Add(d);
+            }
+            var samples = modulator.Modulate(dataBuffer);
+            var sampleBytes = samples.SelectMany(BitConverter.GetBytes).ToArray();
+            await StreamOut.WriteAsync(sampleBytes, 0, sampleBytes.Length, ct);
+        }
+    }
+
+    public void Dispose()
+    {
+        pipe.Writer.Complete();
+        dataBuffer.Dispose();
+    }
+}
+
 public interface IReceiver
 {
     Stream StreamIn { get; }

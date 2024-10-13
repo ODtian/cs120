@@ -3,13 +3,65 @@ using System.Collections.Concurrent;
 using System.Numerics;
 using CS120.Symbol;
 using CS120.Extension;
+using CS120.Preamble;
 
 namespace CS120.Modulate;
 
 public interface IModulator
 {
-    static abstract IDemodulator Create(WaveFormat waveFormat);
+    static abstract IModulator Create(WaveFormat waveFormat);
     float[] Modulate(BlockingCollection<byte> dataBuffer);
+}
+
+public struct DPSKModulator : IModulator
+{
+    private readonly DPSKSymbolOption option;
+    private readonly WaveFormat waveFormat;
+
+    private DPSKModulator(WaveFormat waveFormat)
+    {
+        option = Program.option with { SampleRate = waveFormat.SampleRate };
+        this.waveFormat = waveFormat;
+    }
+
+    public static IModulator Create(WaveFormat waveFormat)
+    {
+        return new DPSKModulator(waveFormat);
+    }
+
+    public float[] Modulate(BlockingCollection<byte> dataBuffer)
+    {
+        var data = dataBuffer.ToArray();
+        return GenerateSamples(data);
+    }
+
+    private float[] GenerateSamples(byte[] data)
+    {
+        var symbols = DFSKSymbol.Get(option);
+
+        var samples = new List<float>();
+
+        IPreamble? preamble = ChirpPreamble.Create(WaveFormat.CreateIeeeFloatWaveFormat(option.SampleRate, 1));
+
+        samples.AddRange(Enumerable.Range(0, 48000).Select(
+            _ => 0f
+        ));
+        samples.AddRange(preamble.PreambleData);
+
+        foreach (var d in data)
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                samples.AddRange(symbols[(d >> i) & 1]);
+            }
+        }
+
+        samples.AddRange(Enumerable.Range(0, 48000).Select(
+            _ => 0f
+        ));
+
+        return samples.ToArray();
+    }
 }
 
 public interface IDemodulator
