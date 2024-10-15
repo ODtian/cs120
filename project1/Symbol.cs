@@ -21,60 +21,61 @@ public interface ISymbol
     // public static abstract float[][] Get(TOption symbolOption);
 }
 
-public readonly struct ChirpSymbolOption
+public readonly record struct ChirpSymbolOption
+(int NumSymbols, float Duration, int SampleRate, float FreqA, float FreqB)
 {
-    public int NumSymbols { get; init; }
-    public int NumSamplesPerSymbol { get; init; }
-    public int SampleRate { get; init; }
-    public float FreqA { get; init; }
-    public float FreqB { get; init; }
+    public int NumSamplesPerSymbol => (int)(Duration * SampleRate);
 }
 
 public readonly struct ChirpSymbol : ISymbol
 {
     public float[][] Samples { get; }
+    public ChirpSymbolOption Option { get; }
     public ChirpSymbol(ChirpSymbolOption symbolOption)
     {
-        var result = new float [symbolOption.NumSymbols][];
+        Option = symbolOption;
+
+        var result = new float [Option.NumSymbols][];
         var builder = new ChirpBuilder();
 
         var sig = builder.SetParameter("low", -1f)
                       .SetParameter("high", 1f)
-                      .SetParameter("f0", symbolOption.FreqA)
-                      .SetParameter("f1", symbolOption.FreqB)
-                      .SampledAt(symbolOption.SampleRate)
-                      .OfLength(symbolOption.NumSamplesPerSymbol)
+                      .SetParameter("f0", Option.FreqA)
+                      .SetParameter("f1", Option.FreqB)
+                      .SampledAt(Option.SampleRate)
+                      .OfLength(Option.NumSamplesPerSymbol)
                       .Build();
-        result[0] = sig.Samples;
 
-        var sig_1 = sig.Copy();
-        sig_1.Reverse();
-        result[1] = (sig_1 * -1).Samples;
+        result[0] = sig.Samples;
+        result[1] = (sig * -1).Samples.Reverse().ToArray();
 
         Samples = result;
     }
 }
-public readonly struct DPSKSymbolOption
+
+public readonly record struct DPSKSymbolOption
+(int NumSymbols, int NumRedundant, int SampleRate, float Freq)
 {
-    public int NumSymbols { get; init; }
-    public int NumSamplesPerSymbol { get; init; }
-    public int SampleRate { get; init; }
-    public float Freq { get; init; }
+    public int NumSamplesPerSymbol => (int)(SampleRate / Freq * NumRedundant);
 }
+
 public readonly struct DPSKSymbol : ISymbol
 {
     public float[][] Samples { get; }
+
+    public DPSKSymbolOption Option { get; }
     public DPSKSymbol(DPSKSymbolOption symbolOption)
     {
-        var result = new float [symbolOption.NumSymbols][];
+        Option = symbolOption;
+        var result = new float [Option.NumSymbols][];
 
         // for (int i = 0; i < symbolOption.NumSymbols; i++)
         var sig = new SineBuilder()
                       .SetParameter("low", -1f)
                       .SetParameter("high", 1f)
-                      .SetParameter("freq", symbolOption.Freq)
-                      .SampledAt(symbolOption.SampleRate)
-                      .OfLength(symbolOption.NumSamplesPerSymbol)
+                      .SetParameter("freq", Option.Freq)
+                      .SampledAt(Option.SampleRate)
+                      .OfLength(Option.NumSamplesPerSymbol)
                       .Build();
 
         result[0] = sig.Samples;

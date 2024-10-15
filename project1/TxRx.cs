@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.IO.Pipelines;
+using System.Net;
 using System.Threading.Channels;
 using CS120.Modulate;
 using CS120.Packet;
@@ -9,93 +10,103 @@ using NAudio.Wave;
 
 namespace CS120.TxRx;
 
-public interface ITransmitter
-{
-    Stream StreamOut { get; }
-    Channel<byte[]> DataChannel { get; }
+public interface ITransmitter<T>
+    where T : IPacket<T> {
+    public ChannelWriter<T> Packets { get; }
+    public ISampleProvider Samples { get; }
     Task Execute(CancellationToken ct);
 }
 
-public class Transmitter<TModulator, TPacket, TPreamble> : ITransmitter, IDisposable
-    where TModulator : IModulator
-    where TPacket : IPacket
-    where TPreamble : IPreamble
+public class Transmitter<TPacket> : ITransmitter<TPacket>, IDisposable
+    where TPacket : IPacket<TPacket>
 {
-    private readonly Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
-    private readonly BlockingCollection<byte> dataBuffer = new();
+    private readonly Channel<TPacket> channel = Channel.CreateUnbounded<TPacket>();
+    private readonly BlockingCollection<float> sampleBuffer = [];
     private readonly IPreamble preamble;
     private readonly IModulator modulator;
 
-    public Stream StreamOut { get; init; }
-    public Channel<byte[]> DataChannel { get; init; } = Channel.CreateUnbounded<byte[]>();
+    public ChannelWriter<TPacket> Packets { get; }
+    public ISampleProvider Samples { get; }
 
-    public Transmitter(WaveFormat waveFormat)
+    public Transmitter(WaveFormat waveFormat, IPreamble preamble, IModulator modulator)
     {
-        StreamOut = pipe.Writer.AsStream();
-        preamble = TPreamble.Create(waveFormat);
-        modulator = TModulator.Create(waveFormat);
+        this.preamble = preamble;
+        this.modulator = modulator;
+
+        Packets = channel.Writer;
+        Samples = new BlockingCollectionSampleProvider(
+            WaveFormat.CreateIeeeFloatWaveFormat(waveFormat.SampleRate, 1), sampleBuffer
+        );
     }
 
     public async Task Execute(CancellationToken ct)
     {
-        await foreach (var data in DataChannel.Reader.ReadAllAsync(ct))
+        try
         {
-            foreach (var d in data)
+            await foreach (var data in channel.Reader.ReadAllAsync(ct))
             {
-                dataBuffer.Add(d);
+                foreach (var p in preamble.Samples)
+                {
+                    sampleBuffer.Add(p, ct);
+                }
+
+                modulator.Modulate(data.Bytes, sampleBuffer);
             }
-            var samples = modulator.Modulate(dataBuffer);
-            var sampleBytes = samples.SelectMany(BitConverter.GetBytes).ToArray();
-            await StreamOut.WriteAsync(sampleBytes, 0, sampleBytes.Length, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Canceled by user");
+        }
+        finally
+        {
+            sampleBuffer.CompleteAdding();
         }
     }
 
     public void Dispose()
     {
-        pipe.Writer.Complete();
-        dataBuffer.Dispose();
+        sampleBuffer.Dispose();
     }
 }
 
-public interface IReceiver
-{
-    Stream StreamIn { get; }
-    Channel<IPacket> PacketChannel { get; }
+public interface IReceiver<T>
+    where T : IPacket<T> {
+    // Stream StreamIn { get; }
+    ISampleProvider Samples { init; }
+    ChannelReader<T> Packets { get; }
     Task Execute(CancellationToken ct);
 }
 
-public class Receiver : IReceiver, IDisposable
+public class Receiver<TPacket> : IReceiver<TPacket>, IDisposable
 // where TDemodulator : IDemodulator
-// where TPacket : IPacket
+    where TPacket : IPacket<TPacket>
 // where TPreamble : IPreamble
 {
 
-    private readonly Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+    // private readonly Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+    private readonly Channel<TPacket> channel = Channel.CreateUnbounded<TPacket>();
     private readonly BlockingCollection<float> sampleBuffer = [];
     private readonly PreambleDetection preambleDetection;
     private readonly IDemodulator demodulator;
-    private readonly ISampleProvider sampleProvider;
 
-    public Stream StreamIn { get; }
-    public Channel<IPacket> PacketChannel { get; } = Channel.CreateUnbounded<IPacket>();
+    // public Stream StreamIn { get; }
 
-    public Receiver(WaveFormat waveFormat, PreambleDetection preambleDetection, IDemodulator demodulator)
+    public ISampleProvider Samples { private get; init; }
+    public ChannelReader<TPacket> Packets { get; }
+    // public Channel<TPacket> PacketChannel { get; } = Channel.CreateUnbounded<TPacket>();
+    public Receiver(ISampleProvider sampleProvider, PreambleDetection preambleDetection, IDemodulator demodulator)
     {
-        // Console.WriteLine(waveFormat);
 
         this.preambleDetection = preambleDetection;
         this.demodulator = demodulator;
-        sampleProvider = new StreamWaveProvider(waveFormat, pipe.Reader.AsStream()).ToSampleProvider().ToMono();
 
-        StreamIn = pipe.Writer.AsStream();
+        Packets = channel.Reader;
+        Samples = sampleProvider;
     }
 
     public void Dispose()
     {
         sampleBuffer.Dispose();
-
-        PacketChannel.Writer.Complete();
-        pipe.Reader.Complete();
     }
     private void FillSample()
     {
@@ -104,7 +115,7 @@ public class Receiver : IReceiver, IDisposable
             var buffer = new float[1024];
             while (true)
             {
-                var numSample = sampleProvider.Read(buffer, 0, buffer.Length);
+                var numSample = Samples.Read(buffer, 0, buffer.Length);
                 // Console.WriteLine(sampleBuffer.Count);
                 if (numSample == 0)
                 {
@@ -144,7 +155,7 @@ public class Receiver : IReceiver, IDisposable
                 // }
                 Console.WriteLine();
 
-                await PacketChannel.Writer.WriteAsync(new RawPacket { Bytes = data }, ct);
+                await channel.Writer.WriteAsync(TPacket.Create(data), ct);
             }
             await fillTask;
         }
@@ -155,6 +166,10 @@ public class Receiver : IReceiver, IDisposable
         catch (OperationCanceledException)
         {
             Console.WriteLine("Canceled by user");
+        }
+        finally
+        {
+            channel.Writer.Complete();
         }
     }
 }

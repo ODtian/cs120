@@ -1,31 +1,28 @@
 namespace CS120.Packet;
 
-public interface IPacket
+public interface IPacket<T>
 {
     byte[] Bytes { get; }
 
-    static virtual IPacket Create(byte[] bytes)
-    {
-        throw new NotImplementedException();
-    }
+    static abstract T Create(byte[] bytes);
 }
 
 public readonly struct EmptyPacket
-() : IPacket
+() : IPacket<EmptyPacket>
 {
     public byte[] Bytes { get; } = [];
 
-    public static IPacket Create(byte[] bytes)
+    public static EmptyPacket Create(byte[] bytes)
     {
         return new EmptyPacket();
     }
 }
 
 public readonly struct RawPacket
-(byte[] bytes) : IPacket
+(byte[] bytes) : IPacket<RawPacket>
 {
     public byte[] Bytes { get; init; } = bytes;
-    public static IPacket Create(byte[] bytes)
+    public static RawPacket Create(byte[] bytes)
     {
         return new RawPacket(bytes);
     }

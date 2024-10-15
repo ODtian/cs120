@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Pipelines;
 using CS120.Utils;
 using NAudio.Wave;
@@ -106,6 +107,7 @@ public class AudioManager
         using var outputDevice = new T();
 
         var tsc = new TaskCompletionSource();
+
         outputDevice.PlaybackStopped += (s, e) => tsc.SetResult();
 
         outputDevice.Init(audioProvider);
@@ -125,7 +127,6 @@ public class AudioManager
 
     public async Task Record(Stream audioStream, IWaveIn recorder, CancellationToken ct)
     {
-
         recorder.DataAvailable += (s, e) => audioStream.Write(e.Buffer, 0, e.BytesRecorded);
 
         var tsc = new TaskCompletionSource();
@@ -164,24 +165,37 @@ public class AudioManager
         await Record(fileWriter, recorder, ct);
     }
 
-    public async Task RecordThenPlay<TWaveIn, TWaveOut>(CancellationToken[] ct)
+    public async Task RecordThenPlay<TWaveIn, TWaveOut>(IEnumerable<CancellationToken> ct)
         where TWaveIn : IWaveIn, new()
         where TWaveOut : IWavePlayer, new()
     {
-        if (ct.Length != 2)
-        {
-            throw new ArgumentException("Must have 2 CancellationToken");
-        }
-
+        // if (ct.Length != 2)
+        // {
+        //     throw new ArgumentException("Must have 2 CancellationToken");
+        // }
         using var recorder = new TWaveIn();
         var pipe = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
 
         using (var streamIn = pipe.Writer.AsStream())
         {
-            await Record(streamIn, recorder, ct[0]);
+            await Record(streamIn, recorder, ct.First());
         }
 
         using var streamOut = pipe.Reader.AsStream();
-        await Play<TWaveOut>(new StreamWaveProvider(recorder.WaveFormat, streamOut), ct[1]);
+        await Play<TWaveOut>(new StreamWaveProvider(recorder.WaveFormat, streamOut), ct.Skip(1).First());
+    }
+
+    public WaveFormat GetRecorderWaveFormat<TWaveIn>()
+        where TWaveIn : IWaveIn, new()
+    {
+        using var recorder = new TWaveIn();
+        return recorder.WaveFormat;
+    }
+
+    public WaveFormat GetPlayerWaveFormat<TWaveOut>()
+        where TWaveOut : IWavePlayer, new()
+    {
+        using var player = new TWaveOut();
+        return player.OutputWaveFormat;
     }
 }
