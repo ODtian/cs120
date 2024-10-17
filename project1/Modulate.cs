@@ -378,7 +378,6 @@ public class OFDMModulator : IModulator
     {
         Modulate(dataBuffer, new AddableBlockingCollection(sampleBuffer));
     }
-    
     public void Modulate(ReadOnlySpan<byte> dataBuffer, Span<float> sampleBuffer)
     {
         var symbols = new float [8][];
@@ -473,6 +472,7 @@ public class OFDMDemodulator : IDemodulator
         }
 #endif
         demodulators = symbols.Select(s => new DPSKDemodulator(s)).ToArray();
+        // Console.WriteLine();
     }
 
     public void Demodulate(BlockingCollection<float> sampleBuffer, Span<byte> dataBuffer)

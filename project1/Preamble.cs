@@ -175,8 +175,8 @@ public readonly struct PreambleDetection
                 // var x = corr * corr / smoothedEnergy;
                 if (corr > corrThreshold && corr > localMaxCorr)
                 {
-                    Console.WriteLine("Detected");
-                    Console.WriteLine($"corr {corr}");
+                    // Console.WriteLine("Detected");
+                    // Console.WriteLine($"corr {corr}");
                     localMaxCorr = corr;
                     restNum = maxPeakFalling;
                 }
@@ -244,7 +244,7 @@ public readonly struct PreambleDetection
             sampleBuffer.Take();
         }
 
-        Console.WriteLine("End Detect");
+        // Console.WriteLine("End Detect");
     }
 }
 

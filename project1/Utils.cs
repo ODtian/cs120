@@ -211,8 +211,8 @@ public static class Codec4B5B
 
 public static class CodecRS
 {
-    public const int eccNums = 12;
-    public static readonly GenericGF rs = new(285, 256, 0);
+    public static readonly int eccNums = Program.eccNums;
+    public static readonly GenericGF rs = new(285, 256, 1);
     public static readonly ReedSolomonEncoder encoder = new(rs);
     public static readonly ReedSolomonDecoder decoder = new(rs);
 
