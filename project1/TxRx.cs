@@ -11,7 +11,8 @@ using NAudio.Wave;
 namespace CS120.TxRx;
 
 public interface ITransmitter<T>
-    where T : IPacket<T> {
+    where T : IPacket<T>
+{
     public ChannelWriter<T> Packets { get; }
     public ISampleProvider Samples { get; }
     Task Execute(CancellationToken ct);
@@ -80,16 +81,17 @@ public class Transmitter<TPacket> : ITransmitter<TPacket>, IDisposable
 }
 
 public interface IReceiver<T>
-    where T : IPacket<T> {
+    where T : IPacket<T>
+{
     // Stream StreamIn { get; }
     ISampleProvider Samples { init; }
     ChannelReader<T> Packets { get; }
     Task Execute(CancellationToken ct);
 }
 public class Receiver<TPacket> : IReceiver<TPacket>, IDisposable
-// where TDemodulator : IDemodulator
+    // where TDemodulator : IDemodulator
     where TPacket : IPacket<TPacket>
-// where TPreamble : IPreamble
+    // where TPreamble : IPreamble
 {
 
     // private readonly Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
