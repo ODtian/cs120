@@ -107,12 +107,19 @@ public class AudioManager
 
         var tsc = new TaskCompletionSource();
 
-        outputDevice.PlaybackStopped += (s, e) => tsc.SetResult();
+        outputDevice.PlaybackStopped += (s, e) =>
+        {
+            // Console.WriteLine(e.ToString());
+            Console.WriteLine(outputDevice.PlaybackState);
+            tsc.SetResult();
+        };
+        // outputDevice.PlaybackStopped += (s, e) => tsc.SetResult();
 
         outputDevice.Init(audioProvider);
         outputDevice.Play();
 
-        ct.Register(() => outputDevice.Stop());
+        ct.Register(outputDevice.Stop);
+        // ct.Register()
 
         await tsc.Task;
     }

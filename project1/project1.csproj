@@ -8,6 +8,7 @@
     <!-- <PackageReference Include="MathNet.Numerics" Version="5.0.0" /> -->
     <PackageReference Include="MathNet.Numerics.Data.Matlab" Version="6.0.0-beta1" />
     <PackageReference Include="NWaves" Version="0.9.6" />
+    <PackageReference Include="STH1123.ReedSolomon" Version="2.1.0" />
   </ItemGroup>
 
   <!-- <ItemGroup>

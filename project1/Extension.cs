@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using NAudio.Wave;
+using STH1123.ReedSolomon;
 
 namespace CS120.Extension;
 
