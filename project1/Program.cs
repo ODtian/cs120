@@ -23,55 +23,72 @@ class Program
     public static DPSKSymbolOption option =
         new() { NumSymbols = 2, NumRedundant = 4, SampleRate = 48000, Freq = 4_800 };
 
-    public static ChirpSymbolOption chirpOption = new() {
+    public static ChirpSymbolOption chirpOption = new()
+    {
         NumSymbols = 2,
-        Duration = 0.001f, // Read config or something
+        Duration = 0.005f, // Read config or something
         SampleRate = 48_000,
         FreqA = 3_000, // Read config or something
         FreqB = 10_000 // Read config or something
     };
 
-    public static float corrThreshold = 0.09f;
+    public static float corrThreshold = 0.3f;
     public static int maxPeakFalling = 480;
     public static float smoothedEnergyFactor = 1f / 64f;
     public static int dataLengthInBit = 255 * 8;
     // public static int dataLengthInBit = (2 + 60 + 40) * 8;
 
-    static byte[] GenerateData(int length)
+    static List<byte> GenerateData(int length)
     {
-        var fragment = new byte[] {
-            0b10101010,
-            0b01010101,
-            0b10101010,
-            0b01010101,
-            0b10101010,
-            0b00000000,
-        };
+        var random = new Random();
+        var data = new List<byte> { };
 
-        var data = new List<byte> {
-            0b00000000,
-            0b00000000,
-        };
-
-        for (int i = 0; i < length; i++)
+        while (data.Count * 8 < length)
         {
-            data.AddRange(fragment);
+            data.Add((byte)random.Next(0, 256));
         }
 
-        var totalLength = (data.Count - 2) * 8;
-        Console.WriteLine(totalLength);
+        int bitsToKeep = length - (data.Count - 1) * 8;
+        data[^1] &= (byte)((1 << bitsToKeep) - 1);
 
-        data[0] = (byte)totalLength;
-        data[1] = (byte)(totalLength >> 8);
-
-        Console.WriteLine(Convert.ToString(data[0], 2).PadLeft(8, '0'));
-        Console.WriteLine(Convert.ToString(data[1], 2).PadLeft(8, '0'));
-        for (int i = 0; i < 40; i++)
-        {
-            data.Add(0b00000000);
-        }
-        return data.ToArray();
+        return data;
     }
+
+    // static byte[] GenerateData(int length)
+    // {
+    //     var fragment = new byte[] {
+    //         0b10101010,
+    //         0b01010101,
+    //         0b10101010,
+    //         0b01010101,
+    //         0b10101010,
+    //         0b00000000,
+    //     };
+
+    //     var data = new List<byte> {
+    //         0b00000000,
+    //         0b00000000,
+    //     };
+
+    //     for (int i = 0; i < length; i++)
+    //     {
+    //         data.AddRange(fragment);
+    //     }
+
+    //     var totalLength = (data.Count - 2) * 8;
+    //     Console.WriteLine(totalLength);
+
+    //     data[0] = (byte)totalLength;
+    //     data[1] = (byte)(totalLength >> 8);
+
+    //     Console.WriteLine(Convert.ToString(data[0], 2).PadLeft(8, '0'));
+    //     Console.WriteLine(Convert.ToString(data[1], 2).PadLeft(8, '0'));
+    //     for (int i = 0; i < 40; i++)
+    //     {
+    //         data.Add(0b00000000);
+    //     }
+    //     return data.ToArray();
+    // }
 
     // static float[] GenerateSamples(byte[] data)
     // {
@@ -151,15 +168,16 @@ class Program
                 smoothedEnergyFactor,
                 maxPeakFalling
             ),
-            // new DPSKDemodulator(new DPSKSymbol(option with { SampleRate = receivedFormat.SampleRate }))
-            new OFDMDemodulator(
-                option with { SampleRate = receivedFormat.SampleRate },
-                option with {
-                    Freq = option.Freq * 2,
-                    NumRedundant = option.NumRedundant * 2,
-                    SampleRate = receivedFormat.SampleRate
-                }
-            )
+        new DPSKDemodulator(new DPSKSymbol(option with { SampleRate = receivedFormat.SampleRate }))
+        // new OFDMDemodulator(
+        //     option with { SampleRate = receivedFormat.SampleRate },
+        //     option with
+        //     {
+        //         Freq = option.Freq * 2,
+        //         NumRedundant = option.NumRedundant * 2,
+        //         SampleRate = receivedFormat.SampleRate
+        //     }
+        // )
         );
 
         return receiver;
@@ -174,13 +192,16 @@ class Program
         var transmitter = new Transmitter<TPacket>(
             sendFormat,
             new ChirpPreamble(new ChirpSymbol(chirpOption with { SampleRate = sendFormat.SampleRate })),
-            // new DPSKModulator(new DPSKSymbol(option with { SampleRate = sendFormat.SampleRate }))
-            new OFDMModulator(
-                option with { SampleRate = sendFormat.SampleRate },
-                option with {
-                    Freq = option.Freq * 2, NumRedundant = option.NumRedundant * 2, SampleRate = sendFormat.SampleRate
-                }
-            ),
+            new DPSKModulator(new DPSKSymbol(option with { SampleRate = sendFormat.SampleRate })),
+            // new OFDMModulator(
+            //     option with { SampleRate = sendFormat.SampleRate },
+            //     option with
+            //     {
+            //         Freq = option.Freq * 2,
+            //         NumRedundant = option.NumRedundant * 2,
+            //         SampleRate = sendFormat.SampleRate
+            //     }
+            // ),
             0.5f
         );
 
@@ -210,13 +231,13 @@ class Program
             }
             // Console.WriteLine(data.Count);
         }
-        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, data.Count, [..data]);
+        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, data.Count, [.. data]);
         MatlabWriter.Write(matFile, matrix, "audio_rec");
     }
 
     static void GenerateMatlabSendData(float[] samples, string matFile)
     {
-        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, samples.Length, [..samples]);
+        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, samples.Length, [.. samples]);
         MatlabWriter.Write(matFile, matrix, "audio");
     }
 
@@ -292,12 +313,12 @@ class Program
     {
         var command = new Command("audio", "play with audio stuff");
 
-        var playOption = new Option < FileInfo ? > (name: "--play",
+        var playOption = new Option<FileInfo?>(name: "--play",
                                                     description: "The file path to play",
                                                     isDefault: true,
                                                     parseArgument: result => ParseSingleFileInfo(result));
 
-        var recordOption = new Option < FileInfo ? > (name: "--record",
+        var recordOption = new Option<FileInfo?>(name: "--record",
                                                       description: "The file path to record",
                                                       isDefault: true,
                                                       parseArgument: result => ParseSingleFileInfo(result, false));
@@ -324,7 +345,7 @@ class Program
         command.SetHandler(
             async (FileInfo? play, FileInfo? record, bool recordPlayBack, int duration) =>
             {
-            await AudioCommandTask(play, record, recordPlayBack, duration, audioManager);
+                await AudioCommandTask(play, record, recordPlayBack, duration, audioManager);
             },
          playOption, recordOption, recordPlayBackOption, durationOption
         );
@@ -334,7 +355,7 @@ class Program
     static Command BuildSendCommand(AudioManager audioManager)
     {
         var command = new Command("send", "send data");
-        var toWavOption = new Option < FileInfo ? > (name: "--to-wav",
+        var toWavOption = new Option<FileInfo?>(name: "--to-wav",
                                                      description: "Export audio data to wav file",
                                                      isDefault: true,
                                                      parseArgument: result => ParseSingleFileInfo(result, false));
@@ -347,7 +368,7 @@ class Program
     static Command BuildReceiveCommand(AudioManager audioManager)
     {
         var command = new Command("receive", "receive data");
-        var fromWavOption = new Option < FileInfo ? > (name: "--from-wav",
+        var fromWavOption = new Option<FileInfo?>(name: "--from-wav",
                                                        description: "Import audio data from wav file",
                                                        isDefault: true,
                                                        parseArgument: result => ParseSingleFileInfo(result, false));
@@ -381,12 +402,14 @@ class Program
         using var cancelToken = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource(duration));
         using var cancelToken1 = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource(), false);
 
-        var taskPlay = play switch {
+        var taskPlay = play switch
+        {
             FileInfo => manager.Play<WasapiOut>(play.FullName, cancelToken.Source.Token),
             null => Task.CompletedTask,
         };
 
-        var taskRecord = (record, recordPlayBack) switch {
+        var taskRecord = (record, recordPlayBack) switch
+        {
             (_, true) => manager.RecordThenPlay<WasapiCapture, WasapiOut>(new[] { cancelToken, cancelToken1 }.Select(
                 cts =>
                 {
@@ -449,7 +472,8 @@ class Program
 
         Console.WriteLine(AudioManager.ListAsioDevice()[0]);
         // var wavePro
-        var play = file switch {
+        var play = file switch
+        {
             null => audioManager.Play<WasapiOut>(transmitter.Samples.ToWaveProvider(), cts.Source.Token),
             // null => audioManager.Play(transmitter.Samples.ToWaveProvider(), "ASIO4ALL v2", cts.Source.Token, 0),
             FileInfo => Task.Run(
@@ -495,10 +519,16 @@ class Program
 
         for (int i = 0; i < 10; i++)
         {
-
-            var data = GenerateData(10);
+            var data = GenerateData(100);
+            Console.WriteLine("Data:");
+            foreach (var d in data)
+            {
+                Console.WriteLine(Convert.ToString(d, 2).PadLeft(8, '0'));
+            }
+            Console.WriteLine();
+            byte[] dataArray = data.ToArray();
             // await transmitter.Packets.WriteAsync(RawPacket.Create(data), cts.Source.Token);
-            await transmitter.Packets.WriteAsync(RSPacket.Encode(data), cts.Source.Token);
+            await transmitter.Packets.WriteAsync(RSPacket.Encode(dataArray), cts.Source.Token);
             // await Task.Delay(1000, cts.Source.Token);
         }
         transmitter.Packets.Complete();
@@ -523,7 +553,8 @@ class Program
 
         var exec = receiver.Execute(cts.Source.Token);
 
-        var rec = file switch {
+        var rec = file switch
+        {
             null => audioManager.Record<WasapiCapture>(pipe.Writer.AsStream(), cts.Source.Token),
             FileInfo => Task.Run(
                 () =>
