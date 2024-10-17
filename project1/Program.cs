@@ -23,8 +23,7 @@ class Program
     public static DPSKSymbolOption option =
         new() { NumSymbols = 2, NumRedundant = 4, SampleRate = 48000, Freq = 4_800 };
 
-    public static ChirpSymbolOption chirpOption = new()
-    {
+    public static ChirpSymbolOption chirpOption = new() {
         NumSymbols = 2,
         Duration = 0.005f, // Read config or something
         SampleRate = 48_000,
@@ -41,7 +40,7 @@ class Program
     static List<byte> GenerateData(int length)
     {
         var random = new Random();
-        var data = new List<byte> { };
+        var data = new List<byte> {};
 
         while (data.Count * 8 < length)
         {
@@ -168,16 +167,16 @@ class Program
                 smoothedEnergyFactor,
                 maxPeakFalling
             ),
-        new DPSKDemodulator(new DPSKSymbol(option with { SampleRate = receivedFormat.SampleRate }))
-        // new OFDMDemodulator(
-        //     option with { SampleRate = receivedFormat.SampleRate },
-        //     option with
-        //     {
-        //         Freq = option.Freq * 2,
-        //         NumRedundant = option.NumRedundant * 2,
-        //         SampleRate = receivedFormat.SampleRate
-        //     }
-        // )
+            new DPSKDemodulator(new DPSKSymbol(option with { SampleRate = receivedFormat.SampleRate }))
+            // new OFDMDemodulator(
+            //     option with { SampleRate = receivedFormat.SampleRate },
+            //     option with
+            //     {
+            //         Freq = option.Freq * 2,
+            //         NumRedundant = option.NumRedundant * 2,
+            //         SampleRate = receivedFormat.SampleRate
+            //     }
+            // )
         );
 
         return receiver;
@@ -231,13 +230,13 @@ class Program
             }
             // Console.WriteLine(data.Count);
         }
-        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, data.Count, [.. data]);
+        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, data.Count, [..data]);
         MatlabWriter.Write(matFile, matrix, "audio_rec");
     }
 
     static void GenerateMatlabSendData(float[] samples, string matFile)
     {
-        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, samples.Length, [.. samples]);
+        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, samples.Length, [..samples]);
         MatlabWriter.Write(matFile, matrix, "audio");
     }
 
@@ -313,12 +312,12 @@ class Program
     {
         var command = new Command("audio", "play with audio stuff");
 
-        var playOption = new Option<FileInfo?>(name: "--play",
+        var playOption = new Option < FileInfo ? > (name: "--play",
                                                     description: "The file path to play",
                                                     isDefault: true,
                                                     parseArgument: result => ParseSingleFileInfo(result));
 
-        var recordOption = new Option<FileInfo?>(name: "--record",
+        var recordOption = new Option < FileInfo ? > (name: "--record",
                                                       description: "The file path to record",
                                                       isDefault: true,
                                                       parseArgument: result => ParseSingleFileInfo(result, false));
@@ -345,7 +344,7 @@ class Program
         command.SetHandler(
             async (FileInfo? play, FileInfo? record, bool recordPlayBack, int duration) =>
             {
-                await AudioCommandTask(play, record, recordPlayBack, duration, audioManager);
+            await AudioCommandTask(play, record, recordPlayBack, duration, audioManager);
             },
          playOption, recordOption, recordPlayBackOption, durationOption
         );
@@ -355,7 +354,7 @@ class Program
     static Command BuildSendCommand(AudioManager audioManager)
     {
         var command = new Command("send", "send data");
-        var toWavOption = new Option<FileInfo?>(name: "--to-wav",
+        var toWavOption = new Option < FileInfo ? > (name: "--to-wav",
                                                      description: "Export audio data to wav file",
                                                      isDefault: true,
                                                      parseArgument: result => ParseSingleFileInfo(result, false));
@@ -368,7 +367,7 @@ class Program
     static Command BuildReceiveCommand(AudioManager audioManager)
     {
         var command = new Command("receive", "receive data");
-        var fromWavOption = new Option<FileInfo?>(name: "--from-wav",
+        var fromWavOption = new Option < FileInfo ? > (name: "--from-wav",
                                                        description: "Import audio data from wav file",
                                                        isDefault: true,
                                                        parseArgument: result => ParseSingleFileInfo(result, false));
@@ -402,14 +401,12 @@ class Program
         using var cancelToken = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource(duration));
         using var cancelToken1 = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource(), false);
 
-        var taskPlay = play switch
-        {
+        var taskPlay = play switch {
             FileInfo => manager.Play<WasapiOut>(play.FullName, cancelToken.Source.Token),
             null => Task.CompletedTask,
         };
 
-        var taskRecord = (record, recordPlayBack) switch
-        {
+        var taskRecord = (record, recordPlayBack) switch {
             (_, true) => manager.RecordThenPlay<WasapiCapture, WasapiOut>(new[] { cancelToken, cancelToken1 }.Select(
                 cts =>
                 {
@@ -465,15 +462,14 @@ class Program
     {
         using var cts = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource());
 
-        using var transmitter = InitTransmitter<WasapiOut, RSPacket>(audioManager);
+        using var transmitter = InitTransmitter<WasapiOut, RSEncodePacket>(audioManager);
 
         Console.WriteLine("start");
         var exec = transmitter.Execute(cts.Source.Token);
 
         Console.WriteLine(AudioManager.ListAsioDevice()[0]);
         // var wavePro
-        var play = file switch
-        {
+        var play = file switch {
             null => audioManager.Play<WasapiOut>(transmitter.Samples.ToWaveProvider(), cts.Source.Token),
             // null => audioManager.Play(transmitter.Samples.ToWaveProvider(), "ASIO4ALL v2", cts.Source.Token, 0),
             FileInfo => Task.Run(
@@ -528,7 +524,7 @@ class Program
             Console.WriteLine();
             byte[] dataArray = data.ToArray();
             // await transmitter.Packets.WriteAsync(RawPacket.Create(data), cts.Source.Token);
-            await transmitter.Packets.WriteAsync(RSPacket.Encode(dataArray), cts.Source.Token);
+            await transmitter.Packets.WriteAsync(RSEncodePacket.Create(dataArray), cts.Source.Token);
             // await Task.Delay(1000, cts.Source.Token);
         }
         transmitter.Packets.Complete();
@@ -542,7 +538,7 @@ class Program
         using var cts = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource());
         // var waveFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 1);
         // var transmitter = new Transmitter<DPSKModulator, EmptyPacket, ChirpPreamble>(waveFormat);
-        using var receiver = InitReceiver<WasapiCapture, RSPacket>(audioManager, file, out var pipe);
+        using var receiver = InitReceiver<WasapiCapture, RSDecodePacket>(audioManager, file, out var pipe);
 
         // var data = GenerateData(10);
         // await transmitter.DataChannel.Writer.WriteAsync(data);
@@ -553,8 +549,7 @@ class Program
 
         var exec = receiver.Execute(cts.Source.Token);
 
-        var rec = file switch
-        {
+        var rec = file switch {
             null => audioManager.Record<WasapiCapture>(pipe.Writer.AsStream(), cts.Source.Token),
             FileInfo => Task.Run(
                 () =>
