@@ -19,6 +19,6 @@ static class IEnumerableExtension
         while (!source.IsAddingCompleted && source.Count < count)
         {
         }
-        return source.AsEnumerable().Take(count);
+        return source.Take(count);
     }
 }

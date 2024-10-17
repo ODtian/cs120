@@ -11,8 +11,6 @@ using CS120.Modulate;
 using CS120.Packet;
 using System.IO.Pipelines;
 using CS120.Utils;
-using Microsoft.VisualBasic.Devices;
-using System.Collections;
 
 namespace CS120;
 
@@ -27,16 +25,17 @@ class Program
 
     public static ChirpSymbolOption chirpOption = new() {
         NumSymbols = 2,
-        Duration = 0.005f, // Read config or something
+        Duration = 0.001f, // Read config or something
         SampleRate = 48_000,
         FreqA = 3_000, // Read config or something
         FreqB = 10_000 // Read config or something
     };
 
-    public static float corrThreshold = 0.1f;
-    public static int maxPeakFalling = 220;
+    public static float corrThreshold = 0.09f;
+    public static int maxPeakFalling = 480;
     public static float smoothedEnergyFactor = 1f / 64f;
-    public static int dataLengthInBit = 480;
+    public static int dataLengthInBit = 255 * 8;
+    // public static int dataLengthInBit = (2 + 60 + 40) * 8;
 
     static byte[] GenerateData(int length)
     {
@@ -123,10 +122,20 @@ class Program
     //     return receiver;
     // }
 
-    static Receiver<RawPacket> InitReceiver<TWaveIn>(AudioManager audioManager, out Pipe pipe)
+    static Receiver<TPacket> InitReceiver<TWaveIn, TPacket>(AudioManager audioManager, FileInfo? file, out Pipe pipe)
         where TWaveIn : IWaveIn, new()
+        where TPacket : IPacket<TPacket>
     {
-        var receivedFormat = audioManager.GetRecorderWaveFormat<TWaveIn>();
+        WaveFormat receivedFormat;
+        if (file is null)
+        {
+            receivedFormat = audioManager.GetRecorderWaveFormat<TWaveIn>();
+        }
+        else
+        {
+            using var reader = new WaveFileReader(file.FullName);
+            receivedFormat = reader.WaveFormat;
+        }
 
         pipe = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
 
@@ -134,7 +143,7 @@ class Program
 
         Console.WriteLine(receivedFormat.SampleRate);
 
-        var receiver = new Receiver<RawPacket>(
+        var receiver = new Receiver<TPacket>(
             new StreamWaveProvider(receivedFormat, pipe.Reader.AsStream()).ToSampleProvider().ToMono(),
             new PreambleDetection(
                 new ChirpPreamble(new ChirpSymbol(chirpOption with { SampleRate = receivedFormat.SampleRate })),
@@ -142,21 +151,37 @@ class Program
                 smoothedEnergyFactor,
                 maxPeakFalling
             ),
-            new DPSKDemodulator(new DPSKSymbol(option with { SampleRate = receivedFormat.SampleRate }))
+            // new DPSKDemodulator(new DPSKSymbol(option with { SampleRate = receivedFormat.SampleRate }))
+            new OFDMDemodulator(
+                option with { SampleRate = receivedFormat.SampleRate },
+                option with {
+                    Freq = option.Freq * 2,
+                    NumRedundant = option.NumRedundant * 2,
+                    SampleRate = receivedFormat.SampleRate
+                }
+            )
         );
 
         return receiver;
     }
 
-    static Transmitter<RawPacket> InitTransmitter<TWaveOut>(AudioManager audioManager)
+    static Transmitter<TPacket> InitTransmitter<TWaveOut, TPacket>(AudioManager audioManager)
         where TWaveOut : IWavePlayer, new()
+        where TPacket : IPacket<TPacket>
     {
         var sendFormat = audioManager.GetPlayerWaveFormat<TWaveOut>();
 
-        var transmitter = new Transmitter<RawPacket>(
+        var transmitter = new Transmitter<TPacket>(
             sendFormat,
             new ChirpPreamble(new ChirpSymbol(chirpOption with { SampleRate = sendFormat.SampleRate })),
-            new DPSKModulator(new DPSKSymbol(option with { SampleRate = sendFormat.SampleRate }))
+            // new DPSKModulator(new DPSKSymbol(option with { SampleRate = sendFormat.SampleRate }))
+            new OFDMModulator(
+                option with { SampleRate = sendFormat.SampleRate },
+                option with {
+                    Freq = option.Freq * 2, NumRedundant = option.NumRedundant * 2, SampleRate = sendFormat.SampleRate
+                }
+            ),
+            0.5f
         );
 
         return transmitter;
@@ -208,6 +233,58 @@ class Program
         rootCommand.AddCommand(BuildSendCommand(audioManager));
         rootCommand.AddCommand(BuildReceiveCommand(audioManager));
 
+        // rootCommand.SetHandler(
+        //     () =>
+        //     {
+        //         Console.WriteLine("Managed Example Byte");
+        //         Console.WriteLine("--------------------");
+        //         const int dataShardCount = 4;
+        //         const int parityShardCount = 2;
+
+        //         // Initialize Reed-Solomon with data shards and parity shards
+        //         ReedSolomon rs = new ReedSolomon(dataShardCount, parityShardCount);
+
+        //         // Example data to encode
+        //         byte[] data = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        //         Console.WriteLine("Data:");
+        //         Console.WriteLine(string.Join(" ", data));
+
+        //         // Encode the data using ManagedEncode to produce shards
+        //         var shards = rs.ManagedEncode(data, dataShardCount, parityShardCount);
+
+        //         Console.WriteLine("Encoded Data:");
+        //         foreach (var shard in shards)
+        //         {
+        //             Console.WriteLine(string.Join(" ", shard));
+        //         }
+
+        //         // Simulate loss of one shard
+        //         shards[1] = null;
+
+        //         Console.WriteLine("Encoded with missing Data:");
+        //         foreach (var shard in shards)
+        //         {
+        //             if (shard == null)
+        //             {
+        //                 Console.WriteLine("null");
+        //             }
+        //             else
+        //             {
+        //                 Console.WriteLine(string.Join(" ", shard));
+        //             }
+        //         }
+
+        //         // Decode the remaining shards using ManagedDecode to recover original data
+        //         var decodedData = rs.ManagedDecode(shards, dataShardCount, parityShardCount);
+
+        //         Console.WriteLine("Decoded data:");
+        //         Console.WriteLine(string.Join(" ", decodedData));
+        //     }
+        // );
+        // foreach (var x in args)
+        // {
+        //     Console.WriteLine(x);
+        // }
         rootCommand.Invoke(args);
     }
 
@@ -257,14 +334,25 @@ class Program
     static Command BuildSendCommand(AudioManager audioManager)
     {
         var command = new Command("send", "send data");
-        command.SetHandler(async () => await SendCommandTask(audioManager));
+        var toWavOption = new Option < FileInfo ? > (name: "--to-wav",
+                                                     description: "Export audio data to wav file",
+                                                     isDefault: true,
+                                                     parseArgument: result => ParseSingleFileInfo(result, false));
+        command.AddOption(toWavOption);
+
+        command.SetHandler(async (file) => await SendCommandTask(audioManager, file), toWavOption);
         return command;
     }
 
     static Command BuildReceiveCommand(AudioManager audioManager)
     {
         var command = new Command("receive", "receive data");
-        command.SetHandler(async () => await ReceiveCommandTask(audioManager));
+        var fromWavOption = new Option < FileInfo ? > (name: "--from-wav",
+                                                       description: "Import audio data from wav file",
+                                                       isDefault: true,
+                                                       parseArgument: result => ParseSingleFileInfo(result, false));
+        command.AddOption(fromWavOption);
+        command.SetHandler(async (file) => await ReceiveCommandTask(audioManager, file), fromWavOption);
         return command;
     }
 
@@ -313,7 +401,7 @@ class Program
 
         var taskUni = Task.WhenAll(taskPlay, taskRecord);
 
-        // using (var cancelToken1 = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource())) using (
+        // using (var cancelToken1 = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource())) using
         //     var cancelToken2 = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource())
         // )
         // {
@@ -350,51 +438,102 @@ class Program
         // }
         await taskUni;
     }
-    static async Task SendCommandTask(AudioManager audioManager)
+    static async Task SendCommandTask(AudioManager audioManager, FileInfo? file)
     {
         using var cts = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource());
 
-        using var transmitter = InitTransmitter<WasapiOut>(audioManager);
+        using var transmitter = InitTransmitter<WasapiOut, RSPacket>(audioManager);
 
         Console.WriteLine("start");
         var exec = transmitter.Execute(cts.Source.Token);
-        var play = audioManager.Play<WasapiOut>(transmitter.Samples.ToWaveProvider(), cts.Source.Token);
 
-        try
-        {
-            for (int i = 0; i < 10; i++)
-            {
+        Console.WriteLine(AudioManager.ListAsioDevice()[0]);
+        // var wavePro
+        var play = file switch {
+            null => audioManager.Play<WasapiOut>(transmitter.Samples.ToWaveProvider(), cts.Source.Token),
+            // null => audioManager.Play(transmitter.Samples.ToWaveProvider(), "ASIO4ALL v2", cts.Source.Token, 0),
+            FileInfo => Task.Run(
+                async () =>
+                {
+                    await exec;
+                    var buffer = new float[1024];
+                    using var writer = new WaveFileWriter(file.FullName, transmitter.Samples.WaveFormat);
 
-                var data = GenerateData(10);
-                await transmitter.Packets.WriteAsync(new RawPacket(data), cts.Source.Token);
-                await Task.Delay(1000, cts.Source.Token);
-            }
-        }
-        finally
+                    while (true)
+                    {
+                        var length = transmitter.Samples.Read(buffer, 0, buffer.Length);
+                        if (length == 0)
+                        {
+                            break;
+                        }
+                        writer.WriteSamples(buffer, 0, length);
+                    }
+                    // using var timer = new System.Timers.Timer(
+                    //     buffer.Length / (float)transmitter.Samples.WaveFormat.SampleRate
+                    // ) { AutoReset = true };
+                    // writer.
+                    // var tcs = new TaskCompletionSource();
+                    // timer.Elapsed += (s, e) =>
+                    // {
+                    //     var length = transmitter.Samples.Read(buffer, 0, buffer.Length);
+                    //     if (length == 0)
+                    //     {
+                    //         tcs.SetResult();
+                    //         return;
+                    //     }
+
+                    //     buffer.AsSpan(length).Clear();
+                    //     writer.WriteSamples(buffer, 0, buffer.Length);
+                    // };
+                    // timer.Start();
+                    // await tcs.Task;
+                    // timer.Close();
+                    // writer.Close();
+                }
+            ),
+        };
+
+        for (int i = 0; i < 10; i++)
         {
-            transmitter.Packets.Complete();
+
+            var data = GenerateData(10);
+            // await transmitter.Packets.WriteAsync(RawPacket.Create(data), cts.Source.Token);
+            await transmitter.Packets.WriteAsync(RSPacket.Encode(data), cts.Source.Token);
+            // await Task.Delay(1000, cts.Source.Token);
         }
+        transmitter.Packets.Complete();
 
         await exec;
         await play;
     }
 
-    static async Task ReceiveCommandTask(AudioManager audioManager)
+    static async Task ReceiveCommandTask(AudioManager audioManager, FileInfo? file)
     {
         using var cts = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource());
         // var waveFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 1);
         // var transmitter = new Transmitter<DPSKModulator, EmptyPacket, ChirpPreamble>(waveFormat);
-        using var receiver = InitReceiver<WasapiCapture>(audioManager, out var pipe);
+        using var receiver = InitReceiver<WasapiCapture, RSPacket>(audioManager, file, out var pipe);
 
         // var data = GenerateData(10);
         // await transmitter.DataChannel.Writer.WriteAsync(data);
 
         // var transmitTask = Task.Run(() => transmitter.Execute(CancellationToken.None));
         // var receiveTask = Task.Run(() => receiver.Execute(CancellationToken.None));
-
         Console.WriteLine("start");
+
         var exec = receiver.Execute(cts.Source.Token);
-        var rec = audioManager.Record<WasapiCapture>(pipe.Writer.AsStream(), cts.Source.Token);
+
+        var rec = file switch {
+            null => audioManager.Record<WasapiCapture>(pipe.Writer.AsStream(), cts.Source.Token),
+            FileInfo => Task.Run(
+                () =>
+                {
+                    using var reader = new WaveFileReader(file.FullName);
+                    reader.CopyTo(pipe.Writer.AsStream());
+                    pipe.Writer.Complete();
+                }
+            ),
+        };
 
         // using (var waveOut = new WaveOutEvent())
         // {
@@ -411,12 +550,13 @@ class Program
         //     }
         // }
 
-        await foreach (var packet in receiver.Packets.ReadAllAsync())
+        await foreach (var packet in receiver.Packets.ReadAllAsync(cts.Source.Token))
         {
             foreach (var d in packet.Bytes)
             {
                 Console.WriteLine(Convert.ToString(d, 2).PadLeft(8, '0'));
             }
+            Console.WriteLine();
         }
 
         await exec;

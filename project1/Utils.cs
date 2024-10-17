@@ -9,7 +9,24 @@ public class BlockingCollectionSampleProvider
 (WaveFormat waveFormat, BlockingCollection<float> sampleBuffer) : ISampleProvider
 {
     public WaveFormat WaveFormat { get; } = waveFormat;
+    public int ReadBlocking(float[] buffer, int offset, int count)
+    {
+        if (sampleBuffer.IsCompleted)
+        {
+            return 0;
+        }
 
+        // Console.WriteLine("Read: " + sampleBuffer.Count);
+
+        if (sampleBuffer.IsAddingCompleted)
+        {
+
+            count = Math.Min(count, sampleBuffer.Count);
+        }
+
+        sampleBuffer.GetConsumingEnumerable().TakeInto(buffer.AsSpan(offset, count));
+        return count;
+    }
     public int Read(float[] buffer, int offset, int count)
     {
         if (sampleBuffer.IsCompleted)
@@ -17,17 +34,15 @@ public class BlockingCollectionSampleProvider
             return 0;
         }
 
-        if (sampleBuffer.Count == 0)
+        var bufferCount = sampleBuffer.Count;
+
+        if (bufferCount == 0)
         {
-            buffer.AsSpan(offset, count).Clear();
-            return count;
+            buffer[offset] = 0;
+            return 1;
         }
 
-        if (sampleBuffer.IsAddingCompleted)
-        {
-
-            count = Math.Min(count, sampleBuffer.Count);
-        }
+        count = Math.Min(count, bufferCount);
 
         sampleBuffer.GetConsumingEnumerable().TakeInto(buffer.AsSpan(offset, count));
         return count;
@@ -71,4 +86,9 @@ public class CancelKeyPressCancellationTokenSource : IDisposable
         Console.CancelKeyPress -= cancelHandler;
         Source.Dispose();
     }
+}
+
+public interface IAddable<T>
+{
+    void Add(T other);
 }

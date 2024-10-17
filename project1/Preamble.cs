@@ -27,7 +27,8 @@ public readonly struct PreambleDetection
     // static int maxPeakFalling = Program.maxPeakFalling;
 
     private readonly IPreamble preamble;
-    private readonly int preambleLength;
+    public readonly int PreambleLength { get; }
+
     // private float mmax = 0f;
     // private int inx = 0;
 
@@ -40,57 +41,205 @@ public readonly struct PreambleDetection
         this.maxPeakFalling = maxPeakFalling;
 
         this.preamble = preamble;
-        preambleLength = preamble.Samples.Length;
+        PreambleLength = preamble.Samples.Length;
 
-        Debug.Assert(preambleLength >= maxPeakFalling);
+        Debug.Assert(PreambleLength >= maxPeakFalling);
+        Console.WriteLine("PreambleLength: " + PreambleLength);
     }
 
-    public readonly void DetectPreamble(BlockingCollection<float> sampleBuffer)
+    // public readonly void DetectPreamble(BlockingCollection<float> sampleBuffer, CancellationToken ct)
+    // {
+    //     var factor = smoothedEnergyFactor;
+    //     var localMaxCorr = 0f;
+
+    //     var smoothedEnergy = sampleBuffer.TakeBlocked(preambleLength - 1)
+    //                              .Aggregate(0f, (acc, sample) => factor * sample * sample + (1 - factor) * acc);
+
+    //     var restNum = -1;
+
+    //     ReadOnlySpan<float> preambleSpan = preamble.Samples.AsSpan();
+
+    //     var buffer = new float[preambleLength];
+    //     var bufferEnd = 0;
+    //     // sampleBuffer.TakeInto(buffer.AsSpan(0, buffer.Length - 1));
+
+    //     while (restNum != 0)
+    //     {
+    //         ct.ThrowIfCancellationRequested();
+
+    //         var corr = 0f;
+    //         var index = 0;
+
+    //         var currentSample = sampleBuffer.TakeBlocked(preambleLength).Skip(preambleLength - 1).First();
+    //         // var currentSample = sampleBuffer.AsEnumerable().Take(1).First();
+    //         buffer[bufferEnd] = currentSample;
+    //         bufferEnd = (bufferEnd + 1) % buffer.Length;
+
+    //         foreach (var sample in buffer.AsSpan(bufferEnd))
+    //         {
+    //             corr += sample * preambleSpan[index];
+    //             index++;
+    //         }
+
+    //         foreach (var sample in buffer.AsSpan(0, bufferEnd))
+    //         {
+    //             corr += sample * preambleSpan[index];
+    //             index++;
+    //         }
+
+    //         smoothedEnergy =
+    //             smoothedEnergyFactor * currentSample * currentSample + (1 - smoothedEnergyFactor) * smoothedEnergy;
+    //         // for (int i = 0; i < preambleLength; i++) {
+    //         //     var s = x[i];
+    //         // }
+    //         // foreach (var sample in x)
+    //         // foreach (var sample in sampleBuffer.TakeBlocked(preambleLength))
+    //         // {
+    //         //     corr += sample * preambleSpan[index];
+    //         //     // corr += x[index] * preambleSpan[index];
+    //         //     if (index == preambleLength - 1)
+    //         //     {
+    //         //         smoothedEnergy =
+    //         //             smoothedEnergyFactor * sample * sample + (1 - smoothedEnergyFactor) * smoothedEnergy;
+    //         //     }
+    //         //     ++index;
+    //         // }
+    //         corr /= preambleLength;
+
+    //         sampleBuffer.Take();
+
+    //         // var x = corr * corr / smoothedEnergy;
+    //         if (corr > corrThreshold && corr > localMaxCorr)
+    //         {
+    //             Console.WriteLine("Detected");
+    //             Console.WriteLine($"corr {corr}");
+    //             localMaxCorr = corr;
+    //             restNum = maxPeakFalling;
+    //         }
+    //         else if (restNum > 0)
+    //         {
+    //             restNum--;
+    //         }
+    //     }
+
+    //     for (int i = 0; i < preambleLength - maxPeakFalling; i++)
+    //     {
+    //         sampleBuffer.Take();
+    //     }
+
+    //     Console.WriteLine("End Detect");
+    // }
+    public readonly void DetectPreamble(BlockingCollection<float> sampleBuffer, CancellationToken ct)
     {
         var factor = smoothedEnergyFactor;
         var localMaxCorr = 0f;
 
-        var smoothedEnergy = sampleBuffer.TakeBlocked(preambleLength - 1)
+        var smoothedEnergy = sampleBuffer.TakeBlocked(PreambleLength - 1)
                                  .Aggregate(0f, (acc, sample) => factor * sample * sample + (1 - factor) * acc);
 
         var restNum = -1;
 
         ReadOnlySpan<float> preambleSpan = preamble.Samples.AsSpan();
 
+        // var readBuffer = new float[preambleLength];
+        var buffer = new float[PreambleLength * 2 - 1];
+        // var bufferEnd = 0;
+        // sampleBuffer.TakeInto(buffer.AsSpan(0, buffer.Length - 1));
+        var bufferSpan = buffer.AsSpan();
         while (restNum != 0)
         {
-            var corr = 0f;
-            var index = 0;
-
-            foreach (var sample in sampleBuffer.TakeBlocked(preambleLength))
+            ct.ThrowIfCancellationRequested();
+            // var index = 0;
+            sampleBuffer.TakeBlocked(PreambleLength * 2 - 1).TakeInto(bufferSpan);
+            // Console.WriteLine("TakeInto");
+            // foreach (var r in sampleBuffer.TakeBlocked(preambleLength * 2))
+            // {
+            //     bufferSpan[index++] = r;
+            // }
+            // .TakeInto(buffer);
+            // readBuffer.CopyTo(buffer.AsSpan(bufferEnd));
+            for (int i = 0; i < PreambleLength && restNum != 0; i++)
             {
-                corr += sample * preambleSpan[index];
-                if (index == preambleLength - 1)
+                var corr = 0f;
+                for (int j = 0; j < PreambleLength; j++)
                 {
-                    smoothedEnergy =
-                        smoothedEnergyFactor * sample * sample + (1 - smoothedEnergyFactor) * smoothedEnergy;
+                    corr += bufferSpan[i + j] * preambleSpan[j];
                 }
-                ++index;
-            }
-            corr /= preambleLength;
+                var sample = bufferSpan[i + PreambleLength - 1];
+                smoothedEnergy += factor * sample * sample + (1 - factor) * smoothedEnergy;
 
-            sampleBuffer.Take();
+                corr /= PreambleLength;
 
-            // var x = corr * corr / smoothedEnergy;
-            if (corr > corrThreshold && corr > localMaxCorr)
-            {
-                Console.WriteLine("Detected");
-                Console.WriteLine($"corr {corr}");
-                localMaxCorr = corr;
-                restNum = maxPeakFalling;
+                sampleBuffer.Take();
+                // Console.Write($"corr {corr}");
+                // var x = corr * corr / smoothedEnergy;
+                if (corr > corrThreshold && corr > localMaxCorr)
+                {
+                    Console.WriteLine("Detected");
+                    Console.WriteLine($"corr {corr}");
+                    localMaxCorr = corr;
+                    restNum = maxPeakFalling;
+                }
+                else if (restNum > 0)
+                {
+                    restNum--;
+                }
             }
-            else if (restNum > 0)
-            {
-                restNum--;
-            }
+            // var index = 0;
+
+            // var currentSample = sampleBuffer.TakeBlocked(preambleLength).Skip(preambleLength - 1).First();
+            // // var currentSample = sampleBuffer.AsEnumerable().Take(1).First();
+            // buffer[bufferEnd] = currentSample;
+            // bufferEnd = (bufferEnd + 1) % buffer.Length;
+
+            // foreach (var sample in buffer.AsSpan(bufferEnd))
+            // {
+            //     corr += sample * preambleSpan[index];
+            //     index++;
+            // }
+
+            // foreach (var sample in buffer.AsSpan(0, bufferEnd))
+            // {
+            //     corr += sample * preambleSpan[index];
+            //     index++;
+            // }
+
+            // smoothedEnergy =
+            //     smoothedEnergyFactor * currentSample * currentSample + (1 - smoothedEnergyFactor) * smoothedEnergy;
+            // for (int i = 0; i < preambleLength; i++) {
+            //     var s = x[i];
+            // }
+            // foreach (var sample in x)
+            // foreach (var sample in sampleBuffer.TakeBlocked(preambleLength))
+            // {
+            //     corr += sample * preambleSpan[index];
+            //     // corr += x[index] * preambleSpan[index];
+            //     if (index == preambleLength - 1)
+            //     {
+            //         smoothedEnergy =
+            //             smoothedEnergyFactor * sample * sample + (1 - smoothedEnergyFactor) * smoothedEnergy;
+            //     }
+            //     ++index;
+            // }
+            // corr /= preambleLength;
+
+            // sampleBuffer.Take();
+
+            // // var x = corr * corr / smoothedEnergy;
+            // if (corr > corrThreshold && corr > localMaxCorr)
+            // {
+            //     Console.WriteLine("Detected");
+            //     Console.WriteLine($"corr {corr}");
+            //     localMaxCorr = corr;
+            //     restNum = maxPeakFalling;
+            // }
+            // else if (restNum > 0)
+            // {
+            //     restNum--;
+            // }
         }
 
-        for (int i = 0; i < preambleLength - maxPeakFalling; i++)
+        for (int i = 0; i < PreambleLength - maxPeakFalling; i++)
         {
             sampleBuffer.Take();
         }

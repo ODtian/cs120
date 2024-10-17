@@ -13,11 +13,10 @@ public class AudioManager
         return AsioOut.GetDriverNames();
     }
 
-    public async Task
-    Play(IWaveProvider audioProvider, string deviceName, CancellationToken ct, int inputChannelOffset = 0)
+    public async Task Play(IWaveProvider audioProvider, string deviceName, CancellationToken ct, int channelOffset = 0)
     {
 
-        using var outputDevice = new AsioOut(deviceName) { AutoStop = true, InputChannelOffset = inputChannelOffset };
+        using var outputDevice = new AsioOut(deviceName) { AutoStop = true, ChannelOffset = channelOffset };
 
         ct.Register(() => outputDevice.Stop());
 
@@ -29,10 +28,10 @@ public class AudioManager
 
         await tsc.Task;
     }
-    public async Task Play(string audioFile, string deviceName, CancellationToken ct, int inputChannelOffset = 0)
+    public async Task Play(string audioFile, string deviceName, CancellationToken ct, int channelOffset = 0)
     {
         using var audioProvider = new AudioFileReader(audioFile);
-        await Play(audioProvider, deviceName, ct, inputChannelOffset);
+        await Play(audioProvider, deviceName, ct, channelOffset);
     }
 
     public async Task RecordAndPlay(
