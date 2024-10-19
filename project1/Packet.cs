@@ -120,7 +120,7 @@ public readonly struct LengthEncodePacket : IPacket<LengthEncodePacket>
 
     public LengthEncodePacket(byte[] bytes, int padding)
     {
-        Console.WriteLine($"LengthEncodePacket: {(ushort)bytes.Length}");
+        // Console.WriteLine($"LengthEncodePacket: {(ushort)bytes.Length}");
         var length = BitConverter.GetBytes((ushort)bytes.Length);
         Bytes = [.. length, .. bytes, .. new byte[padding - bytes.Length]];
     }
