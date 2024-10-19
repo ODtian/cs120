@@ -131,55 +131,9 @@ class Program
         // rootCommand.SetHandler(
         //     () =>
         //     {
-        //         Console.WriteLine("Managed Example Byte");
-        //         Console.WriteLine("--------------------");
-        //         const int dataShardCount = 4;
-        //         const int parityShardCount = 2;
-
-        //         // Initialize Reed-Solomon with data shards and parity shards
-        //         ReedSolomon rs = new ReedSolomon(dataShardCount, parityShardCount);
-
-        //         // Example data to encode
-        //         byte[] data = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-        //         Console.WriteLine("Data:");
-        //         Console.WriteLine(string.Join(" ", data));
-
-        //         // Encode the data using ManagedEncode to produce shards
-        //         var shards = rs.ManagedEncode(data, dataShardCount, parityShardCount);
-
-        //         Console.WriteLine("Encoded Data:");
-        //         foreach (var shard in shards)
-        //         {
-        //             Console.WriteLine(string.Join(" ", shard));
-        //         }
-
-        //         // Simulate loss of one shard
-        //         shards[1] = null;
-
-        //         Console.WriteLine("Encoded with missing Data:");
-        //         foreach (var shard in shards)
-        //         {
-        //             if (shard == null)
-        //             {
-        //                 Console.WriteLine("null");
-        //             }
-        //             else
-        //             {
-        //                 Console.WriteLine(string.Join(" ", shard));
-        //             }
-        //         }
-
-        //         // Decode the remaining shards using ManagedDecode to recover original data
-        //         var decodedData = rs.ManagedDecode(shards, dataShardCount, parityShardCount);
-
-        //         Console.WriteLine("Decoded data:");
-        //         Console.WriteLine(string.Join(" ", decodedData));
         //     }
         // );
-        // foreach (var x in args)
-        // {
-        //     Console.WriteLine(x);
-        // }
+
         rootCommand.Invoke(args);
     }
 
@@ -469,10 +423,8 @@ class Program
             }
             else
             {
-                // Console.WriteLine(seq.Length);
                 chunk = seq.Slice(0, chunkSize);
                 seq = seq.Slice(chunkSize);
-                // Console.WriteLine(seq.Length);
                 return true;
             }
         };
@@ -484,16 +436,9 @@ class Program
             // Console.WriteLine(buffer.Length);
             while (TryChunkData(dataNum, read.IsCompleted, ref buffer, out var chunk))
             {
-                Console.WriteLine(chunk.Length);
                 var dataArray = chunk.ToArray();
-                // chunk.CopyTo()
                 // foreach (var d in dataArray)
                 // {
-                //     // d.Span[]
-                //     // foreach (var b in d.Span)
-                //     // {
-                //     //     Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
-                //     // }
                 //     Console.WriteLine(Convert.ToString(d, 2).PadLeft(8, '0'));
                 // }
                 var packet = new LengthEncodePacket(dataArray, dataNum).Convert<RSEncodePacket>();
@@ -506,28 +451,8 @@ class Program
             {
                 break;
             }
-            // var data = await stream.ReadAtLeast();
-            // await foreach (var data in dataPipe.Reader.ReadAsync(cts.Source.Token))
-            // {
-            //     // Console.WriteLine(data.Length);
-            //     await transmitter.Packets.WriteAsync(new LengthEncodePacket(data, dataNum), cts.Source.Token);
-            // }
         }
-        // for (int i = 0; i < 100; i++)
-        // {
-        //     var data = DataHelper.GenerateData((dataNum - 1) * 8);
-        //     Console.WriteLine("Data:");
-        //     foreach (var d in data)
-        //     {
-        //         Console.WriteLine(Convert.ToString(d, 2).PadLeft(8, '0'));
-        //     }
-        //     Console.WriteLine();
-        //     var packet = new LengthEncodePacket([.. data], dataNum).Convert<RSEncodePacket>();
-        //     // byte[] dataArray = [.. data];
-        //     // await transmitter.Packets.WriteAsync(RawPacket.Create(data), cts.Source.Token);
-        //     await transmitter.Packets.WriteAsync(packet, cts.Source.Token);
-        //     // await Task.Delay(1000, cts.Source.Token);
-        // }
+
         transmitter.Packets.Complete();
 
         await exec;
@@ -537,8 +462,7 @@ class Program
     static async Task ReceiveCommandTask(AudioManager audioManager, FileInfo? fromWav, FileInfo? file, bool binaryTxt)
     {
         using var cts = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource());
-        // var waveFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 1);
-        // var transmitter = new Transmitter<DPSKModulator, EmptyPacket, ChirpPreamble>(waveFormat);
+
         using var receiver = InitReceiver<WasapiCapture, RSDecodePacket>(audioManager, fromWav, out var pipe);
 
         // var data = GenerateData(10);
@@ -572,6 +496,7 @@ class Program
         await foreach (var packet in receiver.Packets.ReadAllAsync(cts.Source.Token))
         {
             Console.WriteLine($"Receive a packet: Length {packet.Bytes.Length}, Valid: {packet.Valid}");
+
             var p = packet.Convert<LengthDecodePacket>();
             if (binaryTxt)
             {
@@ -585,14 +510,6 @@ class Program
             {
                 stream.Write(p.Bytes);
             }
-            // await stream.WriteAsync()
-            // foreach (var d in packet.Bytes)
-            // {
-            //     Console.WriteLine(Convert.ToString(d, 2).PadLeft(8, '0'));
-            // }
-            // Console.WriteLine(packet.Valid);
-            // Console.WriteLine(.Bytes.Length);
-            // Console.WriteLine();
         }
         Console.WriteLine();
 

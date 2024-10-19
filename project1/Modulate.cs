@@ -58,7 +58,7 @@ public class DPSKModulator : IModulator
         {
             samples.AddRange(GetSamples(dataBuffer, i));
         }
-        return [..samples];
+        return [.. samples];
     }
     public float[] GetSamples(ReadOnlySpan<byte> dataBuffer, int offset)
     {
@@ -323,7 +323,8 @@ public class DPSKDemodulator : IDemodulator
 
     public int GetLength(IEnumerable<float> samples)
     {
-        return demodulateLength switch {
+        return demodulateLength switch
+        {
             DemodulateLength.FixedLength(int length) => length,
             DemodulateLength.VariableLength(int lengthPartNumBits) => (int
             )Demodulate<uint>(samples.Take(numSamplesPerSymbol * lengthPartNumBits).ToArray(), lengthPartNumBits),
@@ -380,7 +381,7 @@ public class OFDMModulator : IModulator
     }
     public void Modulate(ReadOnlySpan<byte> dataBuffer, Span<float> sampleBuffer)
     {
-        var symbols = new float [8][];
+        var symbols = new float[8][];
         for (int i = 0; i < dataBuffer.Length; i += modulators.Length)
         {
             // buffer.AsSpan().Clear();
@@ -412,14 +413,14 @@ public class OFDMModulator : IModulator
     {
         var sampleBuffer = new List<float>();
         Modulate(dataBuffer, new AddableList(sampleBuffer));
-        return [..sampleBuffer];
+        return [.. sampleBuffer];
     }
     private void Modulate<T>(ReadOnlySpan<byte> dataBuffer, T sampleBuffer)
         where T : IAddable<float>
     {
         var buffer = new float[numSamplesPerSymbol * 8];
         Console.WriteLine(dataBuffer.Length);
-        var symbols = new float [8][];
+        var symbols = new float[8][];
         for (int i = 0; i < dataBuffer.Length; i += modulators.Length)
         {
             buffer.AsSpan().Clear();

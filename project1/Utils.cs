@@ -1,5 +1,7 @@
+using System.Buffers;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Text;
 using CS120.Extension;
 using MathNet.Numerics.Data.Matlab;
 using MathNet.Numerics.LinearAlgebra;
@@ -325,6 +327,147 @@ public static class DataHelper
         }
         return result;
     }
+
+    static string ReadData(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            var random = new Random();
+            var data = new StringBuilder();
+
+            for (int i = 0; i < 10000; i++)
+            {
+                data.Append(random.Next(0, 2));
+            }
+
+            File.WriteAllText(filePath, data.ToString());
+            return data.ToString();
+        }
+        else
+        {
+            return File.ReadAllText(filePath);
+        }
+    }
+
+    static (int length, List<byte> byteList) ProcessData(string data)
+    {
+        var length = data.Length;
+        var byteList = new List<byte>();
+        for (int i = 0; i < data.Length; i += 8)
+        {
+            string byteString = data.Substring(i, Math.Min(8, data.Length - i));
+            if (byteString.Length < 8)
+            {
+                byteString = byteString.PadRight(8, '0');
+            }
+            byte byteValue = Convert.ToByte(byteString, 2);
+            byteList.Add(byteValue);
+        }
+        return (length, byteList);
+    }
+
+    static void WriteData(string filePath, byte[] data, int length)
+    {
+        var byteString = new StringBuilder();
+        foreach (var d in data)
+        {
+            byteString.Append(Convert.ToString(d, 2).PadLeft(8, '0'));
+        }
+        string dataString = byteString.ToString().Substring(0, length);
+
+        using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write))
+        {
+            using (var writer = new StreamWriter(fileStream))
+            {
+                writer.Write(dataString);
+            }
+        }
+    }
+
+    // static byte[] GenerateData(int length)
+    // {
+    //     var fragment = new byte[] {
+    //         0b10101010,
+    //         0b01010101,
+    //         0b10101010,
+    //         0b01010101,
+    //         0b10101010,
+    //         0b00000000,
+    //     };
+
+    //     var data = new List<byte> {
+    //         0b00000000,
+    //         0b00000000,
+    //     };
+
+    //     for (int i = 0; i < length; i++)
+    //     {
+    //         data.AddRange(fragment);
+    //     }
+
+    //     var totalLength = (data.Count - 2) * 8;
+    //     Console.WriteLine(totalLength);
+
+    //     data[0] = (byte)totalLength;
+    //     data[1] = (byte)(totalLength >> 8);
+
+    //     Console.WriteLine(Convert.ToString(data[0], 2).PadLeft(8, '0'));
+    //     Console.WriteLine(Convert.ToString(data[1], 2).PadLeft(8, '0'));
+    //     for (int i = 0; i < 40; i++)
+    //     {
+    //         data.Add(0b00000000);
+    //     }
+    //     return data.ToArray();
+    // }
+
+    // static float[] GenerateSamples(byte[] data)
+    // {
+    //     // var symbols = DFSKSymbol.Get(option);
+    //     // var symbols = DPSKSymbolOption.Get(option);
+    //     var symbols = new DPSKSymbol(option).Samples;
+
+    //     var samples = new List<float>();
+
+    //     // IPreamble? preamble = ChirpPreamble.Create(WaveFormat.CreateIeeeFloatWaveFormat(option.SampleRate, 1));
+    //     var preamble = new ChirpPreamble(new ChirpSymbol(chirpOption));
+
+    //     samples.AddRange(Enumerable.Range(0, 48000).Select(
+    //         _ => 0f
+    //     ));
+    //     samples.AddRange(preamble.Samples);
+
+    //     foreach (var d in data)
+    //     {
+    //         for (int i = 0; i < 8; i++)
+    //         {
+    //             samples.AddRange(symbols[(d >> i) & 1]);
+    //         }
+    //     }
+
+    //     samples.AddRange(Enumerable.Range(0, 48000).Select(
+    //         _ => 0f
+    //     ));
+
+    //     return samples.ToArray();
+    // }
+
+    // static IReceiver GetFileReciver(string filePath)
+    // {
+    //     using var fileReader = new WaveFileReader(filePath);
+    //     var receiver = new Receiver(
+    //         fileReader.WaveFormat,
+    //         new PreambleDetection(
+    //             new ChirpPreamble(new ChirpSymbol(chirpOption with { SampleRate = fileReader.WaveFormat.SampleRate
+    //             })), corrThreshold, smoothedEnergyFactor, maxPeakFalling
+    //         ),
+    //         new DPSKDemodulator(new DPSKSymbol(option with { SampleRate = fileReader.WaveFormat.SampleRate }))
+    //     );
+
+    //     using var writer = receiver.StreamIn;
+
+    //     fileReader.CopyTo(writer);
+    //     return receiver;
+    // }
 
     // public static byte[] ConvertBytesTo01(byts[] data)
     // {
