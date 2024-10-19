@@ -2,6 +2,7 @@
 using NAudio.Wave;
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Text;
 using MathNet.Numerics.Data.Matlab;
 using MathNet.Numerics.LinearAlgebra;
 using CS120.Symbol;
@@ -40,6 +41,62 @@ class Program
     public static int dataNum = 14;
     public static int dataLengthInBit = (dataNum + eccNums + 2) * 8;
     // public static int dataLengthInBit = (2 + 60 + 40) * 8;
+
+    static string ReadData(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            var random = new Random();
+            var data = new StringBuilder();
+
+            for (int i = 0; i < 10000; i++)
+            {
+                data.Append(random.Next(0, 2));
+            }
+
+            File.WriteAllText(filePath, data.ToString());
+            return data.ToString();
+        }
+        else
+        {
+            return File.ReadAllText(filePath);
+        }
+    }
+
+    static (int length, List<byte> byteList) ProcessData(string data)
+    {
+        var length = data.Length;
+        var byteList = new List<byte>();
+        for (int i = 0; i < data.Length; i += 8)
+        {
+            string byteString = data.Substring(i, Math.Min(8, data.Length - i));
+            if (byteString.Length < 8)
+            {
+                byteString = byteString.PadRight(8, '0');
+            }
+            byte byteValue = Convert.ToByte(byteString, 2);
+            byteList.Add(byteValue);
+        }
+        return (length, byteList);
+    }
+
+    static void WriteData(string filePath, byte[] data, int length)
+    {
+        var byteString = new StringBuilder();
+        foreach (var d in data)
+        {
+            byteString.Append(Convert.ToString(d, 2).PadLeft(8, '0'));
+        }
+        string dataString = byteString.ToString().Substring(0, length);
+
+        using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write))
+        {
+            using (var writer = new StreamWriter(fileStream))
+            {
+                writer.Write(dataString);
+            }
+        }
+    }
 
     static List<byte> GenerateData(int length)
     {
