@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Concurrent;
 using CS120.Extension;
+using MathNet.Numerics.Data.Matlab;
+using MathNet.Numerics.LinearAlgebra;
 using NAudio.Wave;
 using STH1123.ReedSolomon;
 
@@ -211,11 +213,16 @@ public static class Codec4B5B
 
 public static class CodecRS
 {
-    public static readonly int eccNums = Program.eccNums;
+    // public static int EccNums { get; set; } = 7;
+    private static int eccNums = Program.eccNums;
     public static readonly GenericGF rs = new(285, 256, 1);
     public static readonly ReedSolomonEncoder encoder = new(rs);
     public static readonly ReedSolomonDecoder decoder = new(rs);
 
+    public static void SetEccNums(int eccNums)
+    {
+        CodecRS.eccNums = eccNums;
+    }
     static public byte[] Encode(byte[] bytes)
     {
         var data = new byte[bytes.Length + eccNums];
@@ -250,4 +257,166 @@ public static class CodecRS
         }
         return result;
     }
+}
+
+public static class DataHelper
+{
+    public static byte[] GenerateData(int length)
+    {
+        var random = new Random();
+        var data = new List<byte> { };
+
+        while (data.Count * 8 < length)
+        {
+            data.Add((byte)random.Next(0, 256));
+        }
+
+        int bitsToKeep = length - (data.Count - 1) * 8;
+        data[^1] &= (byte)((1 << bitsToKeep) - 1);
+
+        return [.. data];
+    }
+
+    public static byte[] GenerateDataByte(int length)
+
+    {
+        return GenerateData(length * 8);
+
+    }
+    public static void WriteSamplesToFile(string filePath, float[] samples)
+    {
+        using var writer = new WaveFileWriter(filePath, WaveFormat.CreateIeeeFloatWaveFormat(48000, 1));
+        writer.WriteSamples(samples, 0, samples.Length);
+    }
+
+    public static void GenerateMatlabRecData(string filePath, string matFile)
+    {
+        var data = new List<float>();
+        using (var reader = new WaveFileReader(filePath))
+        {
+            var sampleProvider = reader.ToSampleProvider().ToMono();
+
+            var buffer = new float[reader.WaveFormat.SampleRate];
+            while (true)
+            {
+                var length = sampleProvider.Read(buffer, 0, buffer.Length);
+                if (length == 0)
+                    break;
+                data.AddRange(buffer.AsSpan(0, length));
+            }
+            // Console.WriteLine(data.Count);
+        }
+        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, data.Count, [.. data]);
+        MatlabWriter.Write(matFile, matrix, "audio_rec");
+    }
+
+    public static void GenerateMatlabSendData(float[] samples, string matFile)
+    {
+        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, samples.Length, [.. samples]);
+        MatlabWriter.Write(matFile, matrix, "audio");
+    }
+
+    public static byte[] Convert01ToBytes(char[] data)
+    {
+        var result = new byte[(int)Math.Ceiling((float)data.Length / 8)];
+        for (int i = 0; i < data.Length; i++)
+        {
+            result[i / 8] |= (byte)((data[i] == '1' ? 1 : 0) << (7 - (i % 8)));
+        }
+        return result;
+    }
+
+    // public static byte[] ConvertBytesTo01(byts[] data)
+    // {
+    //     var result = new byte[(int)Math.Ceiling((float)data.Length / 8)];
+    //     for (int i = 0; i < data.Length; i++)
+    //     {
+    //         result[i / 8] |= (byte)((data[i] == '1' ? 1 : 0) << (7 - (i % 8)));
+    //     }
+    //     return result;
+    // }
+
+    // static IReceiver GetFileReciver(string filePath)
+    // {
+    //     using var fileReader = new WaveFileReader(filePath);
+    //     var receiver = new Receiver(
+    //         fileReader.WaveFormat,
+    //         new PreambleDetection(
+    //             new ChirpPreamble(new ChirpSymbol(chirpOption with { SampleRate = fileReader.WaveFormat.SampleRate
+    //             })), corrThreshold, smoothedEnergyFactor, maxPeakFalling
+    //         ),
+    //         new DPSKDemodulator(new DPSKSymbol(option with { SampleRate = fileReader.WaveFormat.SampleRate }))
+    //     );
+
+    //     using var writer = receiver.StreamIn;
+
+    //     fileReader.CopyTo(writer);
+    //     return receiver;
+    // }
+    // static byte[] GenerateData(int length)
+    // {
+    //     var fragment = new byte[] {
+    //         0b10101010,
+    //         0b01010101,
+    //         0b10101010,
+    //         0b01010101,
+    //         0b10101010,
+    //         0b00000000,
+    //     };
+
+    //     var data = new List<byte> {
+    //         0b00000000,
+    //         0b00000000,
+    //     };
+
+    //     for (int i = 0; i < length; i++)
+    //     {
+    //         data.AddRange(fragment);
+    //     }
+
+    //     var totalLength = (data.Count - 2) * 8;
+    //     Console.WriteLine(totalLength);
+
+    //     data[0] = (byte)totalLength;
+    //     data[1] = (byte)(totalLength >> 8);
+
+    //     Console.WriteLine(Convert.ToString(data[0], 2).PadLeft(8, '0'));
+    //     Console.WriteLine(Convert.ToString(data[1], 2).PadLeft(8, '0'));
+    //     for (int i = 0; i < 40; i++)
+    //     {
+    //         data.Add(0b00000000);
+    //     }
+    //     return data.ToArray();
+    // }
+
+    // static float[] GenerateSamples(byte[] data)
+    // {
+    //     // var symbols = DFSKSymbol.Get(option);
+    //     // var symbols = DPSKSymbolOption.Get(option);
+    //     var symbols = new DPSKSymbol(option).Samples;
+
+    //     var samples = new List<float>();
+
+    //     // IPreamble? preamble = ChirpPreamble.Create(WaveFormat.CreateIeeeFloatWaveFormat(option.SampleRate, 1));
+    //     var preamble = new ChirpPreamble(new ChirpSymbol(chirpOption));
+
+    //     samples.AddRange(Enumerable.Range(0, 48000).Select(
+    //         _ => 0f
+    //     ));
+    //     samples.AddRange(preamble.Samples);
+
+    //     foreach (var d in data)
+    //     {
+    //         for (int i = 0; i < 8; i++)
+    //         {
+    //             samples.AddRange(symbols[(d >> i) & 1]);
+    //         }
+    //     }
+
+    //     samples.AddRange(Enumerable.Range(0, 48000).Select(
+    //         _ => 0f
+    //     ));
+
+    //     return samples.ToArray();
+    // }
 }

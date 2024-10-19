@@ -11,6 +11,9 @@ using CS120.Modulate;
 using CS120.Packet;
 using System.IO.Pipelines;
 using CS120.Utils;
+using System.Buffers;
+// using System.IO.Pipes;
+using System.Runtime.InteropServices;
 
 namespace CS120;
 
@@ -40,107 +43,6 @@ class Program
     public static int dataNum = 14;
     public static int dataLengthInBit = (dataNum + eccNums + 2) * 8;
     // public static int dataLengthInBit = (2 + 60 + 40) * 8;
-
-    static List<byte> GenerateData(int length)
-    {
-        var random = new Random();
-        var data = new List<byte> { };
-
-        while (data.Count * 8 < length)
-        {
-            data.Add((byte)random.Next(0, 256));
-        }
-
-        int bitsToKeep = length - (data.Count - 1) * 8;
-        data[^1] &= (byte)((1 << bitsToKeep) - 1);
-
-        return data;
-    }
-
-    // static byte[] GenerateData(int length)
-    // {
-    //     var fragment = new byte[] {
-    //         0b10101010,
-    //         0b01010101,
-    //         0b10101010,
-    //         0b01010101,
-    //         0b10101010,
-    //         0b00000000,
-    //     };
-
-    //     var data = new List<byte> {
-    //         0b00000000,
-    //         0b00000000,
-    //     };
-
-    //     for (int i = 0; i < length; i++)
-    //     {
-    //         data.AddRange(fragment);
-    //     }
-
-    //     var totalLength = (data.Count - 2) * 8;
-    //     Console.WriteLine(totalLength);
-
-    //     data[0] = (byte)totalLength;
-    //     data[1] = (byte)(totalLength >> 8);
-
-    //     Console.WriteLine(Convert.ToString(data[0], 2).PadLeft(8, '0'));
-    //     Console.WriteLine(Convert.ToString(data[1], 2).PadLeft(8, '0'));
-    //     for (int i = 0; i < 40; i++)
-    //     {
-    //         data.Add(0b00000000);
-    //     }
-    //     return data.ToArray();
-    // }
-
-    // static float[] GenerateSamples(byte[] data)
-    // {
-    //     // var symbols = DFSKSymbol.Get(option);
-    //     // var symbols = DPSKSymbolOption.Get(option);
-    //     var symbols = new DPSKSymbol(option).Samples;
-
-    //     var samples = new List<float>();
-
-    //     // IPreamble? preamble = ChirpPreamble.Create(WaveFormat.CreateIeeeFloatWaveFormat(option.SampleRate, 1));
-    //     var preamble = new ChirpPreamble(new ChirpSymbol(chirpOption));
-
-    //     samples.AddRange(Enumerable.Range(0, 48000).Select(
-    //         _ => 0f
-    //     ));
-    //     samples.AddRange(preamble.Samples);
-
-    //     foreach (var d in data)
-    //     {
-    //         for (int i = 0; i < 8; i++)
-    //         {
-    //             samples.AddRange(symbols[(d >> i) & 1]);
-    //         }
-    //     }
-
-    //     samples.AddRange(Enumerable.Range(0, 48000).Select(
-    //         _ => 0f
-    //     ));
-
-    //     return samples.ToArray();
-    // }
-
-    // static IReceiver GetFileReciver(string filePath)
-    // {
-    //     using var fileReader = new WaveFileReader(filePath);
-    //     var receiver = new Receiver(
-    //         fileReader.WaveFormat,
-    //         new PreambleDetection(
-    //             new ChirpPreamble(new ChirpSymbol(chirpOption with { SampleRate = fileReader.WaveFormat.SampleRate
-    //             })), corrThreshold, smoothedEnergyFactor, maxPeakFalling
-    //         ),
-    //         new DPSKDemodulator(new DPSKSymbol(option with { SampleRate = fileReader.WaveFormat.SampleRate }))
-    //     );
-
-    //     using var writer = receiver.StreamIn;
-
-    //     fileReader.CopyTo(writer);
-    //     return receiver;
-    // }
 
     static Receiver<TPacket> InitReceiver<TWaveIn, TPacket>(AudioManager audioManager, FileInfo? file, out Pipe pipe)
         where TWaveIn : IWaveIn, new()
@@ -209,39 +111,6 @@ class Program
         );
 
         return transmitter;
-    }
-
-    static void WriteSamplesToFile(string filePath, float[] samples)
-    {
-        using var writer = new WaveFileWriter(filePath, WaveFormat.CreateIeeeFloatWaveFormat(48000, 1));
-        writer.WriteSamples(samples, 0, samples.Length);
-    }
-
-    static void GenerateMatlabRecData(string filePath, string matFile)
-    {
-        var data = new List<float>();
-        using (var reader = new WaveFileReader(filePath))
-        {
-            var sampleProvider = reader.ToSampleProvider().ToMono();
-
-            var buffer = new float[reader.WaveFormat.SampleRate];
-            while (true)
-            {
-                var length = sampleProvider.Read(buffer, 0, buffer.Length);
-                if (length == 0)
-                    break;
-                data.AddRange(buffer.AsSpan(0, length));
-            }
-            // Console.WriteLine(data.Count);
-        }
-        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, data.Count, [.. data]);
-        MatlabWriter.Write(matFile, matrix, "audio_rec");
-    }
-
-    static void GenerateMatlabSendData(float[] samples, string matFile)
-    {
-        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, samples.Length, [.. samples]);
-        MatlabWriter.Write(matFile, matrix, "audio");
     }
 
     [STAThread]
@@ -358,25 +227,55 @@ class Program
     static Command BuildSendCommand(AudioManager audioManager)
     {
         var command = new Command("send", "send data");
+
+        var fileArgument = new Argument<FileInfo
+            ?>(name: "input", description: "The file path to save", parse: result => ParseSingleFileInfo(result));
+
         var toWavOption = new Option<FileInfo?>(name: "--to-wav",
                                                      description: "Export audio data to wav file",
                                                      isDefault: true,
                                                      parseArgument: result => ParseSingleFileInfo(result, false));
-        command.AddOption(toWavOption);
 
-        command.SetHandler(async (file) => await SendCommandTask(audioManager, file), toWavOption);
+        var binaryTxtOption = new Option<bool>(
+            name: "--binary-txt", description: "original txt are binary", getDefaultValue: () => false
+        );
+
+        command.AddArgument(fileArgument);
+        command.AddOption(toWavOption);
+        command.AddOption(binaryTxtOption);
+
+        command.SetHandler(
+            async (file, toWav, binaryTxt) => await SendCommandTask(audioManager, file, toWav, binaryTxt),
+            fileArgument,
+            toWavOption,
+            binaryTxtOption
+        );
         return command;
     }
 
     static Command BuildReceiveCommand(AudioManager audioManager)
     {
         var command = new Command("receive", "receive data");
+
+        var fileOption = new Option<FileInfo?>(name: "--file",
+                                                    description: "The file path to save, otherwise stdout",
+                                                    isDefault: true,
+                                                    parseArgument: result => ParseSingleFileInfo(result, false));
+
         var fromWavOption = new Option<FileInfo?>(name: "--from-wav",
                                                        description: "Import audio data from wav file",
                                                        isDefault: true,
-                                                       parseArgument: result => ParseSingleFileInfo(result, false));
+                                                       parseArgument: result => ParseSingleFileInfo(result));
+
+        var binaryTxtOption = new Option<bool>(
+            name: "--binary-txt", description: "original txt are binary", getDefaultValue: () => false
+        );
+
         command.AddOption(fromWavOption);
-        command.SetHandler(async (file) => await ReceiveCommandTask(audioManager, file), fromWavOption);
+        command.AddOption(fileOption);
+        command.AddOption(binaryTxtOption);
+
+        command.SetHandler(async (fromWav, file, binaryTxt) => await ReceiveCommandTask(audioManager, fromWav, file, binaryTxt), fromWavOption, fileOption, binaryTxtOption);
         return command;
     }
 
@@ -464,7 +363,7 @@ class Program
         // }
         await taskUni;
     }
-    static async Task SendCommandTask(AudioManager audioManager, FileInfo? file)
+    static async Task SendCommandTask(AudioManager audioManager, FileInfo? file, FileInfo? toWav, bool binaryTxt)
     {
         using var cts = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource());
 
@@ -475,7 +374,8 @@ class Program
 
         Console.WriteLine(AudioManager.ListAsioDevice()[0]);
         // var wavePro
-        var play = file switch
+        // var play = Task.CompletedTask;
+        var play = toWav switch
         {
             null => audioManager.Play<WasapiOut>(transmitter.Samples.ToWaveProvider(), cts.Source.Token),
             // null => audioManager.Play(transmitter.Samples.ToWaveProvider(), "ASIO4ALL v2", cts.Source.Token, 0),
@@ -484,7 +384,7 @@ class Program
                 {
                     await exec;
                     var buffer = new float[1024];
-                    using var writer = new WaveFileWriter(file.FullName, transmitter.Samples.WaveFormat);
+                    using var writer = new WaveFileWriter(toWav.FullName, transmitter.Samples.WaveFormat);
 
                     while (true)
                     {
@@ -520,33 +420,124 @@ class Program
             ),
         };
 
-        for (int i = 0; i < 100; i++)
-        {
-            var data = GenerateData((dataNum - 1) * 8);
-            Console.WriteLine("Data:");
-            foreach (var d in data)
+        var dataPipe = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
+        var readTask = Task.Run(
+            () =>
             {
-                Console.WriteLine(Convert.ToString(d, 2).PadLeft(8, '0'));
+                if (file is not null)
+                {
+                    if (binaryTxt)
+                    {
+                        using var fileData = file.OpenText();
+                        var txt = fileData.ReadToEnd().ToArray();
+                        // foreach (var b in txt)
+                        // {
+                        //     Console.WriteLine(b);
+                        //     // Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
+                        // }
+                        // foreach (var b in w)
+                        // {
+                        //     Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
+                        // }
+                        dataPipe.Writer.Write(DataHelper.Convert01ToBytes(txt));
+                    }
+                    else
+                    {
+                        file.OpenRead().CopyTo(dataPipe.Writer.AsStream());
+                    }
+                    dataPipe.Writer.Complete();
+                }
             }
-            Console.WriteLine();
-            var packet = new LengthEncodePacket([.. data], dataNum).Convert<RSEncodePacket>();
-            // byte[] dataArray = [.. data];
-            // await transmitter.Packets.WriteAsync(RawPacket.Create(data), cts.Source.Token);
-            await transmitter.Packets.WriteAsync(packet, cts.Source.Token);
-            // await Task.Delay(1000, cts.Source.Token);
+        );
+
+        static bool TryChunkData(
+            int chunkSize, bool complete, ref ReadOnlySequence<byte> seq, out ReadOnlySequence<byte> chunk
+        )
+        {
+            if (seq.IsEmpty)
+            {
+                chunk = seq;
+                return false;
+            }
+            else if (seq.Length < chunkSize)
+            {
+                chunk = seq;
+                seq = seq.Slice(seq.Length);
+                return complete;
+            }
+            else
+            {
+                // Console.WriteLine(seq.Length);
+                chunk = seq.Slice(0, chunkSize);
+                seq = seq.Slice(chunkSize);
+                // Console.WriteLine(seq.Length);
+                return true;
+            }
+        };
+
+        while (true)
+        {
+            var read = await dataPipe.Reader.ReadAsync(cts.Source.Token);
+            var buffer = read.Buffer;
+            // Console.WriteLine(buffer.Length);
+            while (TryChunkData(dataNum, read.IsCompleted, ref buffer, out var chunk))
+            {
+                Console.WriteLine(chunk.Length);
+                var dataArray = chunk.ToArray();
+                // chunk.CopyTo()
+                // foreach (var d in dataArray)
+                // {
+                //     // d.Span[]
+                //     // foreach (var b in d.Span)
+                //     // {
+                //     //     Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
+                //     // }
+                //     Console.WriteLine(Convert.ToString(d, 2).PadLeft(8, '0'));
+                // }
+                var packet = new LengthEncodePacket(dataArray, dataNum).Convert<RSEncodePacket>();
+                await transmitter.Packets.WriteAsync(packet, cts.Source.Token);
+            }
+
+            dataPipe.Reader.AdvanceTo(buffer.Start, buffer.End);
+
+            if (read.IsCompleted)
+            {
+                break;
+            }
+            // var data = await stream.ReadAtLeast();
+            // await foreach (var data in dataPipe.Reader.ReadAsync(cts.Source.Token))
+            // {
+            //     // Console.WriteLine(data.Length);
+            //     await transmitter.Packets.WriteAsync(new LengthEncodePacket(data, dataNum), cts.Source.Token);
+            // }
         }
+        // for (int i = 0; i < 100; i++)
+        // {
+        //     var data = DataHelper.GenerateData((dataNum - 1) * 8);
+        //     Console.WriteLine("Data:");
+        //     foreach (var d in data)
+        //     {
+        //         Console.WriteLine(Convert.ToString(d, 2).PadLeft(8, '0'));
+        //     }
+        //     Console.WriteLine();
+        //     var packet = new LengthEncodePacket([.. data], dataNum).Convert<RSEncodePacket>();
+        //     // byte[] dataArray = [.. data];
+        //     // await transmitter.Packets.WriteAsync(RawPacket.Create(data), cts.Source.Token);
+        //     await transmitter.Packets.WriteAsync(packet, cts.Source.Token);
+        //     // await Task.Delay(1000, cts.Source.Token);
+        // }
         transmitter.Packets.Complete();
 
         await exec;
         await play;
     }
 
-    static async Task ReceiveCommandTask(AudioManager audioManager, FileInfo? file)
+    static async Task ReceiveCommandTask(AudioManager audioManager, FileInfo? fromWav, FileInfo? file, bool binaryTxt)
     {
         using var cts = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource());
         // var waveFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 1);
         // var transmitter = new Transmitter<DPSKModulator, EmptyPacket, ChirpPreamble>(waveFormat);
-        using var receiver = InitReceiver<WasapiCapture, RSDecodePacket>(audioManager, file, out var pipe);
+        using var receiver = InitReceiver<WasapiCapture, RSDecodePacket>(audioManager, fromWav, out var pipe);
 
         // var data = GenerateData(10);
         // await transmitter.DataChannel.Writer.WriteAsync(data);
@@ -557,44 +548,51 @@ class Program
 
         var exec = receiver.Execute(cts.Source.Token);
 
-        var rec = file switch
+        var rec = fromWav switch
         {
             null => audioManager.Record<WasapiCapture>(pipe.Writer.AsStream(), cts.Source.Token),
             FileInfo => Task.Run(
                 () =>
                 {
-                    using var reader = new WaveFileReader(file.FullName);
+                    using var reader = new WaveFileReader(fromWav.FullName);
                     reader.CopyTo(pipe.Writer.AsStream());
                     pipe.Writer.Complete();
                 }
             ),
         };
-
-        // using (var waveOut = new WaveOutEvent())
-        // {
-        //     var buffer = new byte[1024];
-        //     int bytesRead;
-        //     while ((bytesRead = await transmitter.StreamOut.ReadAsync(buffer, 0, buffer.Length)) > 0)
-        //     {
-        //         waveOut.Init(new RawSourceWaveStream(new MemoryStream(buffer, 0, bytesRead), waveFormat));
-        //         waveOut.Play();
-        //         while (waveOut.PlaybackState == PlaybackState.Playing)
-        //         {
-        //             await Task.Delay(100);
-        //         }
-        //     }
-        // }
+        // PipeStream
+        using var stream = file switch
+        {
+            null => Console.OpenStandardOutput(),
+            FileInfo => file.OpenWrite()
+        };
 
         await foreach (var packet in receiver.Packets.ReadAllAsync(cts.Source.Token))
         {
+            Console.WriteLine($"Receive a packet: Length {packet.Bytes.Length}, Valid: {packet.Valid}");
+            var p = packet.Convert<LengthDecodePacket>();
+            if (binaryTxt)
+            {
+                foreach (var b in p.Bytes)
+                {
+                    stream.Write(MemoryMarshal.Cast<char, byte>(Convert.ToString(b, 2).PadLeft(8, '0').AsSpan()));
+                }
+
+            }
+            else
+            {
+                stream.Write(p.Bytes);
+            }
+            // await stream.WriteAsync()
             // foreach (var d in packet.Bytes)
             // {
             //     Console.WriteLine(Convert.ToString(d, 2).PadLeft(8, '0'));
             // }
-            Console.WriteLine(packet.Valid);
-            Console.WriteLine(packet.Convert<LengthDecodePacket>().Bytes.Length);
-            Console.WriteLine();
+            // Console.WriteLine(packet.Valid);
+            // Console.WriteLine(.Bytes.Length);
+            // Console.WriteLine();
         }
+        Console.WriteLine();
 
         await exec;
         await rec;
