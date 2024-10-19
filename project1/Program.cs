@@ -2,6 +2,7 @@
 using NAudio.Wave;
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Text;
 using MathNet.Numerics.Data.Matlab;
 using MathNet.Numerics.LinearAlgebra;
 using CS120.Symbol;
@@ -43,6 +44,7 @@ class Program
     public static int dataNum = 14;
     public static int dataLengthInBit = (dataNum + eccNums + 2) * 8;
     // public static int dataLengthInBit = (2 + 60 + 40) * 8;
+
 
     static Receiver<TPacket> InitReceiver<TWaveIn, TPacket>(AudioManager audioManager, FileInfo? file, out Pipe pipe)
         where TWaveIn : IWaveIn, new()
