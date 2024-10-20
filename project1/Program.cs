@@ -412,13 +412,20 @@ class Program
         {
             if (seq.IsEmpty)
             {
-                chunk = seq;
+                chunk = default;
                 return false;
             }
             else if (seq.Length < chunkSize)
             {
-                chunk = seq;
-                seq = seq.Slice(seq.Length);
+                if (complete)
+                {
+                    chunk = seq;
+                    seq = seq.Slice(seq.Length);
+                }
+                else
+                {
+                    chunk = default;
+                }
                 return complete;
             }
             else
