@@ -51,6 +51,8 @@ public readonly struct ChirpSymbol : ISymbol
 
         Samples = result;
     }
+
+    public static implicit operator ChirpSymbol(ChirpSymbolOption option) => new(option);
 }
 
 public readonly record struct DPSKSymbolOption
@@ -84,4 +86,6 @@ public readonly struct DPSKSymbol : ISymbol
 
         Samples = result;
     }
+
+    public static implicit operator DPSKSymbol(DPSKSymbolOption option) => new(option);
 }

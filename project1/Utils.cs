@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.IO.Pipelines;
 using System.Text;
 using CS120.Extension;
 using MathNet.Numerics.Data.Matlab;
@@ -10,48 +11,136 @@ using STH1123.ReedSolomon;
 
 namespace CS120.Utils;
 
-public class BlockingCollectionSampleProvider
-(WaveFormat waveFormat, BlockingCollection<float> sampleBuffer) : ISampleProvider
+// public class BlockingCollectionSampleProvider
+// (WaveFormat waveFormat, BlockingCollection<float> sampleBuffer) : ISampleProvider
+// {
+//     public WaveFormat WaveFormat { get; } = waveFormat;
+//     public int ReadBlocking(float[] buffer, int offset, int count)
+//     {
+//         if (sampleBuffer.IsCompleted)
+//         {
+//             return 0;
+//         }
+
+//         // Console.WriteLine("Read: " + sampleBuffer.Count);
+
+//         if (sampleBuffer.IsAddingCompleted)
+//         {
+
+//             count = Math.Min(count, sampleBuffer.Count);
+//         }
+
+//         sampleBuffer.GetConsumingEnumerable().TakeInto(buffer.AsSpan(offset, count));
+//         return count;
+//     }
+//     public int Read(float[] buffer, int offset, int count)
+//     {
+//         if (sampleBuffer.IsCompleted)
+//         {
+//             return 0;
+//         }
+
+//         var bufferCount = sampleBuffer.Count;
+
+//         if (bufferCount == 0)
+//         {
+//             buffer[offset] = 0;
+//             return 1;
+//         }
+
+//         count = Math.Min(count, bufferCount);
+
+//         sampleBuffer.GetConsumingEnumerable().TakeInto(buffer.AsSpan(offset, count));
+//         return count;
+//     }
+// }
+
+public class PipeViewProvider : IWaveProvider, ISampleProvider
 {
-    public WaveFormat WaveFormat { get; } = waveFormat;
-    public int ReadBlocking(float[] buffer, int offset, int count)
+    public PipeReader? Reader { get; }
+    public ISampleProvider SampleProvider { get; }
+    public WaveFormat WaveFormat { get; }
+
+    public PipeViewProvider(WaveFormat waveFormat, PipeReader reader)
     {
-        if (sampleBuffer.IsCompleted)
+        WaveFormat = waveFormat;
+        Reader = reader;
+        SampleProvider = this.ToSampleProvider().ToMono();
+    }
+
+    public int Read(byte[] buffer, int offset, int count)
+    {
+        if (Reader == null)
         {
             return 0;
         }
 
-        // Console.WriteLine("Read: " + sampleBuffer.Count);
+        var result = Reader.ReadAtLeastAsync(count).AsTask().GetAwaiter().GetResult();
 
-        if (sampleBuffer.IsAddingCompleted)
+        if (result.IsFinished())
         {
-
-            count = Math.Min(count, sampleBuffer.Count);
+            Reader.AdvanceTo(result.Buffer.Start);
+            return 0;
         }
 
-        sampleBuffer.GetConsumingEnumerable().TakeInto(buffer.AsSpan(offset, count));
-        return count;
+        var resultBuffer = result.Buffer;
+        var readed = Math.Min(count, resultBuffer.Length);
+
+        var seq = resultBuffer.Slice(0, readed);
+        seq.CopyTo(buffer.AsSpan(offset, (int)readed));
+        Reader.AdvanceTo(seq.Start);
+        return (int)readed;
     }
+
     public int Read(float[] buffer, int offset, int count)
     {
-        if (sampleBuffer.IsCompleted)
+        return SampleProvider.Read(buffer, offset, count);
+    }
+
+    public void AdvanceSamples(int numSamples)
+    {
+        if (Reader == null)
         {
-            Console.WriteLine("sampleBuffer.IsCompleted");
+            return;
+        }
+        if (Reader.TryRead(out var result))
+        {
+            // Console.WriteLine(result.Buffer.Length);
+            Reader.AdvanceTo(
+                result.Buffer.GetPosition(Math.Min(result.Buffer.Length, numSamples * WaveFormat.BitsPerSample / 8))
+            );
+        }
+    }
+}
+
+public class NonBlockingPipeWaveProvider
+(WaveFormat waveFormat, PipeReader pipeReader) : IWaveProvider
+{
+    private readonly PipeReader pipeReader = pipeReader;
+    public WaveFormat WaveFormat { get; } = waveFormat;
+
+    public int Read(byte[] buffer, int offset, int count)
+    {
+        if (pipeReader.TryRead(out var result) && !result.Buffer.IsEmpty)
+        {
+            var length = Math.Min(count, (int)result.Buffer.Length);
+
+            var resultBuffer = result.Buffer.Slice(0, length);
+
+            resultBuffer.CopyTo(buffer.AsSpan(offset, length));
+            pipeReader.AdvanceTo(resultBuffer.End);
+            return length;
+        }
+        else if (result.IsFinished())
+        {
+            pipeReader.AdvanceTo(result.Buffer.Start);
             return 0;
         }
-
-        var bufferCount = sampleBuffer.Count;
-
-        if (bufferCount == 0)
+        else
         {
-            buffer[offset] = 0;
-            return 1;
+            buffer.AsSpan(offset, count).Clear();
+            return count;
         }
-
-        count = Math.Min(count, bufferCount);
-
-        sampleBuffer.GetConsumingEnumerable().TakeInto(buffer.AsSpan(offset, count));
-        return count;
     }
 }
 
@@ -89,14 +178,24 @@ public class CancelKeyPressCancellationTokenSource : IDisposable
 
     public void Dispose()
     {
-        Console.CancelKeyPress -= cancelHandler;
+        Enable(false);
         Source.Dispose();
     }
 }
 
-public interface IAddable<T>
+public interface IExtendable<T>
 {
-    void Add(T other);
+    void Extend(ReadOnlySpan<T> other);
+}
+
+public interface IReaderBuilder<out T>
+{
+    T Build(WaveFormat waveFormat, PipeReader sampleBuffer);
+}
+
+public interface IWriterBuilder<out T>
+{
+    T Build(WaveFormat waveFormat, PipeWriter sampleBuffer);
 }
 
 public static class Codec4B5B
@@ -149,10 +248,10 @@ public static class Codec4B5B
         {
             var highNibble = (byte)(data[i] >> 4);
             var lowNibble = (byte)(data[i] & 0b1111);
-            // result[]
+
             var low = EncodeTable[lowNibble];
             var high = EncodeTable[highNibble];
-            // result.Set(i * 5 * 2, (bool)(low >> 1 & 1));
+
             result[i * 5 * 2] = (low & 0b1) != 0;
             result[i * 5 * 2 + 1] = (low & 0b10) != 0;
             result[i * 5 * 2 + 2] = (low & 0b100) != 0;
@@ -180,7 +279,6 @@ public static class Codec4B5B
         var result = new byte[(int)(data.Length * 0.8)];
         for (int i = 0; i < result.Length; i++)
         {
-            // var b = 0b0;
             byte high = 0b0;
             byte low = 0b0;
             low |= (byte)(dataBit[i * 5 * 2] ? 0b1 : 0b0);
@@ -216,48 +314,50 @@ public static class Codec4B5B
 public static class CodecRS
 {
     // public static int EccNums { get; set; } = 7;
-    private static int eccNums = Program.eccNums;
+    // private static int eccNums = Program.eccNums;
     public static readonly GenericGF rs = new(285, 256, 1);
     public static readonly ReedSolomonEncoder encoder = new(rs);
     public static readonly ReedSolomonDecoder decoder = new(rs);
 
-    public static void SetEccNums(int eccNums)
+    public const byte magic = 0b10101010;
+    // public static void SetEccNums(int eccNums)
+    // {
+    //     CodecRS.eccNums = eccNums;
+    // }
+    static public byte[] Encode(byte[] bytes, int eccNums)
     {
-        CodecRS.eccNums = eccNums;
-    }
-    static public byte[] Encode(byte[] bytes)
-    {
-        var data = new byte[bytes.Length + eccNums];
+        var data = new byte[bytes.Length + 1 + eccNums];
         var toEncode = new int[data.Length];
 
         for (int i = 0; i < bytes.Length; i++)
         {
-            data[i] = bytes[i];
-            toEncode[i] = bytes[i];
+            toEncode[i] = data[i] = bytes[i];
         }
 
+        toEncode[bytes.Length] = data[bytes.Length] = magic;
+
         encoder.Encode(toEncode, eccNums);
-        for (int i = bytes.Length; i < data.Length; i++)
+        for (int i = bytes.Length + 1; i < data.Length; i++)
         {
             data[i] = (byte)toEncode[i];
         }
         return data;
     }
 
-    static public bool Decode(byte[] bytes, out byte[] data)
+    static public byte[] Decode(byte[] bytes, int eccNums, out bool valid)
     {
-        data = new byte[bytes.Length - eccNums];
+        var data = new byte[bytes.Length - 1 - eccNums];
         var toDecode = new int[bytes.Length];
         for (int i = 0; i < bytes.Length; i++)
         {
             toDecode[i] = bytes[i];
         }
-        var result = decoder.Decode(toDecode, eccNums);
+        valid = decoder.Decode(toDecode, eccNums);
         for (int i = 0; i < data.Length; i++)
         {
             data[i] = (byte)toDecode[i];
         }
-        return result;
+        return data;
     }
 }
 
@@ -266,7 +366,7 @@ public static class DataHelper
     public static byte[] GenerateData(int length)
     {
         var random = new Random();
-        var data = new List<byte> { };
+        var data = new List<byte> {};
 
         while (data.Count * 8 < length)
         {
@@ -276,14 +376,13 @@ public static class DataHelper
         int bitsToKeep = length - (data.Count - 1) * 8;
         data[^1] &= (byte)((1 << bitsToKeep) - 1);
 
-        return [.. data];
+        return [..data];
     }
 
     public static byte[] GenerateDataByte(int length)
 
     {
         return GenerateData(length * 8);
-
     }
     public static void WriteSamplesToFile(string filePath, float[] samples)
     {
@@ -308,13 +407,13 @@ public static class DataHelper
             }
             // Console.WriteLine(data.Count);
         }
-        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, data.Count, [.. data]);
+        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, data.Count, [..data]);
         MatlabWriter.Write(matFile, matrix, "audio_rec");
     }
 
     public static void GenerateMatlabSendData(float[] samples, string matFile)
     {
-        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, samples.Length, [.. samples]);
+        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, samples.Length, [..samples]);
         MatlabWriter.Write(matFile, matrix, "audio");
     }
 
@@ -383,7 +482,33 @@ public static class DataHelper
             }
         }
     }
-
+    public static bool TryChunkData(
+        int chunkSize, bool complete, ref ReadOnlySequence<byte> seq, out ReadOnlySequence<byte> chunk
+    )
+    {
+        if (seq.IsEmpty)
+        {
+            chunk = seq;
+            return false;
+        }
+        else if (seq.Length < chunkSize)
+        {
+            if (complete)
+            {
+                chunk = seq;
+                seq = seq.Slice(seq.Length);
+            }
+            else
+                chunk = default;
+            return complete;
+        }
+        else
+        {
+            chunk = seq.Slice(0, chunkSize);
+            seq = seq.Slice(chunkSize);
+            return true;
+        }
+    }
     // static byte[] GenerateData(int length)
     // {
     //     var fragment = new byte[] {
