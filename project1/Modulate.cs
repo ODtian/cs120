@@ -7,114 +7,114 @@ using CS120.Preamble;
 using System.Diagnostics;
 using CS120.Modulate;
 using CS120.Utils;
+using System.IO.Pipelines;
+using System.Runtime.InteropServices;
+using System.Buffers;
 
 namespace CS120.Modulate;
 
 public interface IModulator
 {
-    void Modulate(ReadOnlySpan<byte> dataBuffer, BlockingCollection<float> sampleBuffer);
-    void Modulate(ReadOnlySpan<byte> dataBuffer, Span<float> sampleBuffer);
-    float[] Modulate(ReadOnlySpan<byte> dataBuffer);
+    // void Modulate(ReadOnlySpan<byte> dataBuffer, BlockingCollection<float> sampleBuffer);
+    // void Modulate(ReadOnlySpan<byte> dataBuffer, Span<float> sampleBuffer);
+    // float[] Modulate(ReadOnlySpan<byte> dataBuffer);
+    void Init(WaveFormat waveFormat, PipeWriter sampleBuffer);
+    void Modulate(ReadOnlySpan<byte> from);
+    void Modulate(ReadOnlySpan<byte> from, out byte[] to);
+    // void Modulate(ReadOnlySpan<byte> dataBuffer, out byte[] sampleBuffer);
 }
 
-public class DPSKModulator : IModulator
+public class DPSKModulator
+(PipeWriter pipeWriter, DPSKSymbol symbol) : IPipeWriter<byte>
 {
-    private readonly DPSKSymbol symbols;
+    private readonly DPSKSymbol symbol = symbol;
+    private readonly int numSamplesPerSymbol = symbol.Option.NumSamplesPerSymbol;
+    // private PipeWriter ? sampleBuffer;
+    public PipeWriter SourceWriter { get; } = pipeWriter;
 
-    public DPSKModulator(DPSKSymbolOption option) : this(new DPSKSymbol(option))
-    {
-    }
+    // public int NumSamplesPerSymbol { get; } = symbols.Option.NumSamplesPerSymbol;
 
-    public DPSKModulator(DPSKSymbol symbols)
-    {
-        this.symbols = symbols;
-    }
+    // public static explicit operator DPSKModulator(DPSKSymbol symbols) => new(symbols);
 
-    public void Modulate(ReadOnlySpan<byte> dataBuffer, BlockingCollection<float> sampleBuffer)
-    {
-        for (int i = 0; i < dataBuffer.Length * 8; i++)
-        {
-            foreach (var sample in GetSamples(dataBuffer, i))
-            {
-                sampleBuffer.Add(sample);
-            }
-        }
-    }
-    public void Modulate(ReadOnlySpan<byte> dataBuffer, Span<float> sampleBuffer)
-    {
-        var index = 0;
-        for (int i = 0; i < dataBuffer.Length * 8; i++)
-        {
-            var samples = GetSamples(dataBuffer, i);
-            samples.CopyTo(sampleBuffer.Slice(index));
-            index += samples.Length;
-        }
-    }
-
-    public float[] Modulate(ReadOnlySpan<byte> dataBuffer)
-    {
-        var samples = new List<float>();
-        for (int i = 0; i < dataBuffer.Length * 8; i++)
-        {
-            samples.AddRange(GetSamples(dataBuffer, i));
-        }
-        return [.. samples];
-    }
-    public float[] GetSamples(ReadOnlySpan<byte> dataBuffer, int offset)
-    {
-        return symbols.Samples[(dataBuffer[offset / 8] >> (offset % 8)) & 1];
-    }
-
-    public void GetSamples(byte data, Span<float[]> sampleBuffer)
-    {
-        for (int i = 0; i < 8; i++)
-        {
-            sampleBuffer[i] = symbols.Samples[(data >> i) & 1];
-        }
-    }
-    // private IEnumerable<float[]> GenerateSamples(ReadOnlySpan<byte> dataBuffer)
+    // public void Init(WaveFormat waveFormat, PipeWriter sampleBuffer)
     // {
-    //     for (int i = 0; i < dataBuffer.Length; i++)
+    //     if (this.sampleBuffer is not null)
     //     {
-    //         var data = dataBuffer[i];
-    //         for (int j = 0; j < 8; j++)
-    //         {
-    //             yield return symbols.Samples[(data >> i) & 1];
-    //         }
+    //         throw new InvalidOperationException("sampleBuffer is already initialized");
     //     }
-    //     // var symbols = DFSKSymbol.Get(option);
 
-    //     // var samples = new List<float>();
+    //     this.sampleBuffer = sampleBuffer;
+    // }
 
-    //     // IPreamble? preamble = ChirpPreamble.Create(WaveFormat.CreateIeeeFloatWaveFormat(option.SampleRate, 1));
+    // public DPSKModulator Build(WaveFormat waveFormat, PipeWriter sampleBuffer)
+    // {
+    //     Init(waveFormat, sampleBuffer);
+    //     return this;
+    // }
+    public void Write(ReadOnlySpan<byte> dataBuffer)
+    {
+        Console.WriteLine(numSamplesPerSymbol);
+        for (int i = 0; i < dataBuffer.Length; i++)
+        {
+            var data = dataBuffer[i];
+            for (int j = 0; j < 8; j++)
+            {
+                SourceWriter.Write(symbol.Samples.Span[data >> j & 1].Span.AsBytes());
+            }
+            // SourceWriter.Write(ModulateHelper.GetModulateSamples(symbol.Samples.Span, dataBuffer, i).AsBytes());
+        }
+    }
+    // public void Modulate(ReadOnlySpan<byte> dataBuffer)
+    // {
+    //     if (sampleBuffer is null)
+    //     {
+    //         throw new InvalidOperationException("sampleBuffer is not initialized");
+    //     }
+    //     for (int i = 0; i < dataBuffer.Length * 8; i++)
+    //     {
+    //         sampleBuffer.Write(GetSamples(dataBuffer, i).AsBytes());
+    //     }
+    // }
 
-    //     // samples.AddRange(Enumerable.Range(0, 48000).Select(
-    //     //     _ => 0f
-    //     // ));
-    //     // samples.AddRange(preamble.PreambleData);
+    // public void Modulate(ReadOnlySpan<byte> dataBuffer, Span<float> sampleBuffer)
+    // {
+    //     var index = 0;
+    //     for (int i = 0; i < dataBuffer.Length * 8; i++)
+    //     {
+    //         var samples = GetSamples(dataBuffer, i);
+    //         samples.CopyTo(sampleBuffer.Slice(index));
+    //         index += samples.Length;
+    //     }
+    // }
 
-    //     // foreach (var d in data)
-    //     // {
-    //     //     for (int i = 0; i < 8; i++)
-    //     //     {
-    //     //         samples.AddRange(symbols[(d >> i) & 1]);
-    //     //     }
-    //     // }
+    // public void Modulate(ReadOnlySpan<byte> dataBuffer, out byte[] sampleBuffer)
+    // {
+    //     var samples = new List<byte>();
+    //     for (int i = 0; i < dataBuffer.Length * 8; i++)
+    //     {
+    //         samples.AddRange(GetSamples(dataBuffer, i).AsBytes());
+    //     }
 
-    //     // samples.AddRange(Enumerable.Range(0, 48000).Select(
-    //     //     _ => 0f
-    //     // ));
+    //     sampleBuffer = [..samples];
+    // }
+    // public ReadOnlySpan<float> GetSamples(ReadOnlySpan<byte> dataBuffer, int bitOffset)
+    // {
+    //     return symbol.Samples.Span[(dataBuffer[bitOffset / 8] >> (bitOffset % 8)) & 1].Span;
+    // }
 
-    //     // return samples.ToArray();
+    // public void GetSamples(byte data, Span<float[]> sampleBuffer)
+    // {
+    //     for (int i = 0; i < 8; i++)
+    //     {
+    //         sampleBuffer[i] = symbols.Samples[(data >> i) & 1];
+    //     }
     // }
 }
 
 public abstract record DemodulateLength()
 {
-    public record FixedLength(int length) : DemodulateLength;
-    public record VariableLength(int numlengthBit) : DemodulateLength;
-
-    public static readonly DemodulateLength Default = new FixedLength(Program.dataLengthInBit);
+    public record FixedLength(int Length) : DemodulateLength;
+    public record VariableLength(int NumLengthByte) : DemodulateLength;
 }
 
 public interface IDemodulator
@@ -124,395 +124,665 @@ public interface IDemodulator
     // {
     //     throw new NotImplementedException();
     // }
-    byte[] Demodulate(BlockingCollection<float> sampleBuffer);
-    void Demodulate(BlockingCollection<float> sampleBuffer, Span<byte> dataBuffer);
-    void Demodulate(ReadOnlySpan<float> sampleBuffer, Span<byte> dataBuffer);
+    void Init(WaveFormat waveFormat, PipeReader sampleBuffer);
+    bool Demodulate(out byte[] to);
+    bool Demodulate(Span<byte> to);
+    // bool Demodulate(ReadOnlySpan<float> sampleBuffer, Span<byte> dataBuffer);
+    // byte[] Demodulate(BlockingCollection<float> sampleBuffer);
+    // void Demodulate(BlockingCollection<float> sampleBuffer, Span<byte> dataBuffer);
+    // void Demodulate(ReadOnlySpan<float> sampleBuffer, Span<byte> dataBuffer);
     // T Demodulate<T>(ReadOnlySpan<float> samples, int numBits)
     //     where T : IBinaryInteger<T>, IUnsignedNumber<T>;
 }
 
-public class DPSKDemodulator : IDemodulator
+// public class DPSKDemodulatorBuilder
+// (DPSKSymbol symbols) : IReaderBuilder<DPSKDemodulator>
+// {
+
+//     private readonly DPSKSymbol symbols = symbols;
+//     // private readonly WaveFormat waveFormat;
+//     private readonly DemodulateLength demodulateLength = DemodulateLength.Default;
+
+//     public DPSKDemodulatorBuilder(DPSKSymbol symbols, DemodulateLength demodulateLength) : this(symbols)
+//     {
+//         this.demodulateLength = demodulateLength;
+//     }
+
+//     public DPSKDemodulatorBuilder(DPSKSymbolOption option) : this(new DPSKSymbol(option))
+//     {
+//     }
+
+//     public DPSKDemodulatorBuilder(DPSKSymbolOption option, DemodulateLength demodulateLength)
+//         : this(new DPSKSymbol(option), demodulateLength)
+//     {
+//     }
+
+//     public DPSKDemodulator Build(WaveFormat waveFormat, PipeReader sampleBuffer)
+//     {
+//         return new(
+//             new StreamWaveProvider(waveFormat, sampleBuffer.AsStream()).ToSampleProvider().ToMono(),
+//             symbols,
+//             demodulateLength
+//         );
+//     }
+// }
+
+public class DPSKDemodulator
+(PipeReader pipeReader, WaveFormat waveFormat, DPSKSymbol symbol) : IPipeReader<byte>
 {
 
     // public readonly DPSKSymbolOption option;
-    private readonly DPSKSymbol symbols;
-    private readonly int numSamplesPerSymbol;
-    private readonly DemodulateLength demodulateLength = DemodulateLength.Default;
+    private readonly DPSKSymbol symbol = symbol;
+    private readonly int numSamplesPerSymbol = symbol.Option.NumSamplesPerSymbol;
+    // private readonly DemodulateLength demodulateLength = DemodulateLength.Default;
+    private readonly ISampleProvider sampleProvider =
+        new StreamWaveProvider(waveFormat, pipeReader.AsStream()).ToSampleProvider().ToMono();
+    private readonly ISampleProvider viewSampleProvider = new PipeViewProvider(waveFormat, pipeReader);
+    public PipeReader SourceReader { get; } = pipeReader;
+    // private ISampleProvider ? sampleProvider;
 
-    // private readonly int lengthPartNumBits = 16;
-    public DPSKDemodulator(DPSKSymbolOption option) : this(new DPSKSymbol(option))
+    // public int NumSamplesPerSymbol { get; } = symbols.Option.NumSamplesPerSymbol;
+
+    // public DPSKDemodulator(DPSKSymbolOption option) : this(new DPSKSymbol(option))
+    // {
+    // }
+
+    // public DPSKDemodulator(DPSKSymbol symbol, DemodulateLength demodulateLength)
+    //     : this(symbols) => this.demodulateLength = demodulateLength;
+
+    // public DPSKDemodulator(DPSKSymbolOption option, DemodulateLength demodulateLength)
+    //     : this(new DPSKSymbol(option), demodulateLength)
+    // {
+    // }
+    // public DPSKDemodulator(DPSKSymbol symbols, DemodulateLength demodulateLength) : this(symbols)
+    // {
+    //     DemodulateLength = demodulateLength;
+    // }
+
+    // public void Init(WaveFormat waveFormat, PipeReader sampleBuffer)
+    // {
+    //     if (sampleProvider is not null)
+    //     {
+    //         throw new InvalidOperationException("sampleProvider is already initialized");
+    //     }
+
+    //     sampleProvider = new StreamWaveProvider(waveFormat, sampleBuffer.AsStream()).ToSampleProvider().ToMono();
+    // }
+
+    // public DPSKDemodulator Build(WaveFormat waveFormat, PipeReader sampleBuffer)
+    // {
+    //     Init(waveFormat, sampleBuffer);
+    //     return this;
+    // }
+    public bool TryReadTo(Span<byte> dst, bool advandce = true)
     {
-    }
-    public DPSKDemodulator(DPSKSymbol symbols)
-    {
-        this.symbols = symbols;
-        numSamplesPerSymbol = this.symbols.Option.NumSamplesPerSymbol;
-    }
-
-    public DPSKDemodulator(DemodulateLength demodulateLength, DPSKSymbol symbols) : this(symbols)
-    {
-        this.demodulateLength = demodulateLength;
-    }
-
-    public void Demodulate(BlockingCollection<float> sampleBuffer, Span<byte> dataBuffer)
-
-    {
-
-        var consuming = sampleBuffer.GetConsumingEnumerable();
-        // var lengthPart = consuming.Take(numSamplesPerSymbol * lengthPartNumBits).ToArray();
-
-        // Console.WriteLine($"lengthPart.Length {lengthPart.Length}");
-
-        // var dataLengthInBit = (int)Demodulate<ushort>(lengthPart, lengthPartNumBits);
-
-        // Console.WriteLine($"dataLengthInBit a {Convert.ToString((byte)dataLengthInBit, 2)}");
-        // Console.WriteLine($"dataLengthInBit b {Convert.ToString((byte)(dataLengthInBit >> 8), 2)}");
-
-        // // dataLengthInBit = Math.Min(2048, dataLengthInBit);
-
-        // Console.WriteLine($"dataLengthInBit {dataLengthInBit}");
-        // dataLengthInBit = 480;
-        var t1 = DateTime.Now;
-
-        // byte[]? data = new byte[(int)Math.Ceiling(dataLengthInBit / 8f)];
-
         var buffer = new float[numSamplesPerSymbol * 8];
 
-        for (int i = 0; i < dataBuffer.Length; i++)
+        var provider = advandce ? sampleProvider : viewSampleProvider;
+
+        for (int i = 0; i < dst.Length; i++)
         {
-            consuming.TakeInto(buffer);
-            dataBuffer[i] = Demodulate<byte>(buffer, 8);
-            // Demodulate(buffer, dataBuffer.Slice(i, 1));
-        }
-        // for (int i = 0; i < dataBuffer.Length; i++)
-        // {
-        //     consuming.TakeInto(buffer);
-        //     dataBuffer[i] = Demodulate<byte>(buffer, 8);
-        // }
-
-        var t2 = DateTime.Now;
-        Console.WriteLine($"time {t2 - t1}");
-
-        // return data;
-    }
-
-    public byte[] Demodulate(BlockingCollection<float> sampleBuffer)
-    {
-        var dataLengthInBit = GetLength(sampleBuffer.GetConsumingEnumerable());
-
-        byte[]? data = new byte[(int)Math.Ceiling(dataLengthInBit / 8f)];
-
-        Demodulate(sampleBuffer, data.AsSpan());
-
-        return data;
-        // var consuming = sampleBuffer.GetConsumingEnumerable();
-        // // var lengthPart = consuming.Take(numSamplesPerSymbol * lengthPartNumBits).ToArray();
-
-        // // Console.WriteLine($"lengthPart.Length {lengthPart.Length}");
-        // var dataLengthInBit =
-        //     demodulateLength switch { DemodulateLength.FixedLength(int length) => length,
-        //                               DemodulateLength.VariableLength(int lengthPartNumBits) =>
-        //                               Demodulate<ushort>(
-        //                                   consuming.Take(numSamplesPerSymbol * lengthPartNumBits).ToArray(),
-        //                                   lengthPartNumBits
-        //                               ),
-        //                               _ => 0 };
-        // // var dataLengthInBit = (int)Demodulate<ushort>(lengthPart, lengthPartNumBits);
-
-        // // Console.WriteLine($"dataLengthInBit a {Convert.ToString((byte)dataLengthInBit, 2)}");
-        // // Console.WriteLine($"dataLengthInBit b {Convert.ToString((byte)(dataLengthInBit >> 8), 2)}");
-
-        // // // dataLengthInBit = Math.Min(2048, dataLengthInBit);
-
-        // // Console.WriteLine($"dataLengthInBit {dataLengthInBit}");
-        // // dataLengthInBit = 480;
-        // var t1 = DateTime.Now;
-
-        // byte[]? data = new byte[(int)Math.Ceiling(dataLengthInBit / 8f)];
-
-        // var buffer = new float[numSamplesPerSymbol * 8];
-
-        // for (int i = 0; i < data.Length; i++)
-        // {
-        //     consuming.TakeInto(buffer);
-        //     data[i] = Demodulate<byte>(buffer, 8);
-        // }
-
-        // var t2 = DateTime.Now;
-        // Console.WriteLine($"time {t2 - t1}");
-    }
-
-    public void Demodulate(ReadOnlySpan<float> samples, Span<byte> dataBuffer)
-    {
-        for (int i = 0; i < dataBuffer.Length; i++)
-        {
-            dataBuffer[i] = Demodulate<byte>(samples.Slice(i * numSamplesPerSymbol, 8 * numSamplesPerSymbol), 8);
-        }
-    }
-
-    private static void Smooth(Span<float> samples, int windowSize)
-    {
-#if DEBUG
-        if (windowSize <= 0)
-        {
-            throw new ArgumentException("Window size must be greater than 0", nameof(windowSize));
-        }
-#endif
-        int halfWindow = windowSize / 2;
-        float[] originalSamples = samples.ToArray();
-
-        for (int i = 0; i < samples.Length; i++)
-        {
-            float sum = 0;
-            int count = 0;
-
-            for (int j = -halfWindow; j <= halfWindow; j++)
+            if (provider.ReadExact(buffer, 0, buffer.Length) == 0)
             {
-                int index = i + j;
-                if (index >= 0 && index < originalSamples.Length)
-                {
-                    sum += originalSamples[index];
-                    count++;
-                }
+                return false;
             }
-
-            samples[i] = sum / count;
-        }
-    }
-
-    public T Demodulate<T>(ReadOnlySpan<float> samples, int numBits)
-        where T : IBinaryInteger<T>, IUnsignedNumber<T>
-    {
-#if false
-        {
-
-            // Console.WriteLine("Debug模式");
-            var size = Marshal.SizeOf<T>() * 8;
-
-            if (numBits > size)
-            {
-                throw new ArgumentException($"numBits must be less than {size}, given {numBits}");
-            }
-        }
-#endif
-        var result = T.Zero;
-
-        // for (int i = 0; i < numBits; i++)
-        // {
-        //     var offset = numSamplesPerSymbol * i;
-        //     for (int j = 0; j < numSamplesPerSymbol; j++)
-        //     {
-        //         samples[j + offset] *= symbols.Samples[0][j];
-        //     }
-        // }
-        // Smooth(samples, 12);
-
-        for (int i = 0; i < numBits; i++)
-        {
-            var energy = 0f;
-            var offset = numSamplesPerSymbol * i;
-            for (int j = 0; j < numSamplesPerSymbol; j++)
-            {
-                energy += samples[j + offset] * symbols.Samples[0][j];
-            }
-            result |= energy < 0f ? T.One << i : T.Zero;
+            dst[i] = ModulateHelper.DotProductDemodulateByte(buffer, symbol.Samples.Span[0].Span);
         }
 
-        return result;
+        return true;
     }
+    // public bool Demodulate(Span<byte> dataBuffer)
+    // {
+    //     // var sampleProvider = new StreamWaveProvider(waveFormat,
+    //     sampleBuffer.AsStream()).ToSampleProvider().ToMono(); if (sampleProvider is null)
+    //     {
+    //         throw new InvalidOperationException("sampleProvider is not initialized");
+    //     }
 
-    public int GetLength(IEnumerable<float> samples)
-    {
-        return demodulateLength switch
-        {
-            DemodulateLength.FixedLength(int length) => length,
-            DemodulateLength.VariableLength(int lengthPartNumBits) => (int
-            )Demodulate<uint>(samples.Take(numSamplesPerSymbol * lengthPartNumBits).ToArray(), lengthPartNumBits),
-            _ => 0
-        };
-    }
+    //     var buffer = new float[NumSamplesPerSymbol * 8];
+
+    //     for (int i = 0; i < dataBuffer.Length; i++)
+    //     {
+    //         if (sampleProvider.ReadExact(buffer, 0, buffer.Length) == 0)
+    //         {
+    //             return false;
+    //         }
+    //         dataBuffer[i] = Demodulate<byte>(buffer, 8);
+    //     }
+
+    //     return true;
+    // }
+
+    // public bool Demodulate(out byte[] dataBuffer)
+    // {
+    //     var dataLengthInBit = GetLength();
+    //     dataBuffer = new byte[(int)Math.Ceiling(dataLengthInBit / 8f)];
+    //     if (dataLengthInBit == 0)
+    //     {
+    //         return false;
+    //     }
+
+    //     return Demodulate(dataBuffer.AsSpan());
+    // }
+
+    // public bool Demodulate(ReadOnlySpan<float> samples, Span<byte> dataBuffer)
+    // {
+    //     if (dataBuffer.Length * 8 * numSamplesPerSymbol > samples.Length)
+    //     {
+    //         return false;
+    //     }
+    //     for (int i = 0; i < dataBuffer.Length; i++)
+    //     {
+    //         dataBuffer[i] = Demodulate<byte>(samples.Slice(i * numSamplesPerSymbol, 8 * numSamplesPerSymbol), 8);
+    //     }
+    //     return true;
+    // }
+
+    //     private static void Smooth(Span<float> samples, int windowSize)
+    //     {
+    // #if DEBUG
+    //         if (windowSize <= 0)
+    //         {
+    //             throw new ArgumentException("Window size must be greater than 0", nameof(windowSize));
+    //         }
+    // #endif
+    //         int halfWindow = windowSize / 2;
+    //         float[] originalSamples = samples.ToArray();
+
+    //         for (int i = 0; i < samples.Length; i++)
+    //         {
+    //             float sum = 0;
+    //             int count = 0;
+
+    //             for (int j = -halfWindow; j <= halfWindow; j++)
+    //             {
+    //                 int index = i + j;
+    //                 if (index >= 0 && index < originalSamples.Length)
+    //                 {
+    //                     sum += originalSamples[index];
+    //                     count++;
+    //                 }
+    //             }
+
+    //             samples[i] = sum / count;
+    //         }
+    //     }
+    // public byte Demodulate(ReadOnlySpan<float> samples, int numBits)
+    // {
+    //     // #if false
+    //     //         {
+
+    //     //             // Console.WriteLine("Debug模式");
+    //     //             var size = Marshal.SizeOf<T>() * 8;
+
+    //     //             if (numBits > size)
+    //     //             {
+    //     //                 throw new ArgumentException($"numBits must be less than {size}, given {numBits}");
+    //     //             }
+    //     //         }
+    //     // #endif
+    //     byte result = 0;
+
+    //     // for (int i = 0; i < numBits; i++)
+    //     // {
+    //     //     var offset = numSamplesPerSymbol * i;
+    //     //     for (int j = 0; j < numSamplesPerSymbol; j++)
+    //     //     {
+    //     //         samples[j + offset] *= symbols.Samples[0][j];
+    //     //     }
+    //     // }
+    //     // Smooth(samples, 12);
+
+    //     for (int i = 0; i < numBits; i++)
+    //     {
+    //         var energy = 0f;
+    //         var offset = NumSamplesPerSymbol * i;
+    //         for (int j = 0; j < NumSamplesPerSymbol; j++)
+    //         {
+    //             energy += samples[j + offset] * symbols.Samples[0][j];
+    //         }
+    //         result |= energy < 0f ? T.One << i : T.Zero;
+    //     }
+
+    //     return result;
+    // }
+    // public T Demodulate<T>(ReadOnlySpan<float> samples, int numBits)
+    //     where T : IBinaryInteger<
+    //               T>,
+    //               IUnsignedNumber<T>
+    // {
+    //     // #if false
+    //     //         {
+
+    //     //             // Console.WriteLine("Debug模式");
+    //     //             var size = Marshal.SizeOf<T>() * 8;
+
+    //     //             if (numBits > size)
+    //     //             {
+    //     //                 throw new ArgumentException($"numBits must be less than {size}, given {numBits}");
+    //     //             }
+    //     //         }
+    //     // #endif
+    //     var result = T.Zero;
+
+    //     // for (int i = 0; i < numBits; i++)
+    //     // {
+    //     //     var offset = numSamplesPerSymbol * i;
+    //     //     for (int j = 0; j < numSamplesPerSymbol; j++)
+    //     //     {
+    //     //         samples[j + offset] *= symbols.Samples[0][j];
+    //     //     }
+    //     // }
+    //     // Smooth(samples, 12);
+
+    //     for (int i = 0; i < numBits; i++)
+    //     {
+    //         var energy = 0f;
+    //         var offset = NumSamplesPerSymbol * i;
+    //         for (int j = 0; j < NumSamplesPerSymbol; j++)
+    //         {
+    //             energy += samples[j + offset] * symbols.Samples[0][j];
+    //         }
+    //         result |= energy < 0f ? T.One << i : T.Zero;
+    //     }
+
+    //     return result;
+    // }
+
+    // public int GetLength()
+    // {
+    //     if (demodulateLength is DemodulateLength.FixedLength(int length))
+    //     {
+    //         return length;
+    //     }
+    //     else if (demodulateLength is DemodulateLength.VariableLength(int lengthPartNumBits))
+    //     {
+    //         if (sampleProvider is null)
+    //         {
+    //             throw new InvalidOperationException("sampleProvider is not initialized");
+    //         }
+    //         var buffer = new float[NumSamplesPerSymbol * lengthPartNumBits];
+    //         if (sampleProvider.ReadExact(buffer, 0, buffer.Length) == 0)
+    //         {
+    //             return 0;
+    //         }
+    //         return (int)Demodulate<uint>(buffer, lengthPartNumBits);
+    //     }
+    //     else
+    //     {
+    //         return 0;
+    //     }
+    // }
 }
 
-public class OFDMModulator : IModulator
+public class OFDMModulator : IPipeWriter<byte>
 {
+    // private readonly DPSKModulator[] modulators;
+    private readonly DPSKSymbol[] symbols;
+    // private PipeWriter? sampleBuffer;
     private readonly int numSamplesPerSymbol;
-    private readonly DPSKModulator[] modulators;
+    // public int NumSamplesPerSymbol { get; }
+    public PipeWriter SourceWriter { get; }
 
-    readonly struct AddableBlockingCollection
-    (BlockingCollection<float> buffer) : IAddable<float>
-    {
-        readonly BlockingCollection<float> buffer = buffer;
-        public readonly void Add(float sample)
-        {
-            buffer.Add(sample);
-        }
-    }
+    // readonly struct ExtendAbleList
+    // (List<byte> buffer) : IExtendable<float>
+    // {
+    //     readonly List<byte> buffer = buffer;
+    //     public readonly void Extend(ReadOnlySpan<float> samples)
+    //     {
+    //         buffer.AddRange(samples.AsBytes());
+    //     }
+    // }
 
-    readonly struct AddableList
-    (List<float> buffer) : IAddable<float>
+    // readonly struct ExtendAblePipe
+    // (PipeWriter buffer) : IExtendable<float>
+    // {
+    //     readonly PipeWriter buffer = buffer;
+    //     public readonly void Extend(ReadOnlySpan<float> samples)
+    //     {
+    //         buffer.Write(samples.AsBytes());
+    //     }
+    // }
+    public OFDMModulator(PipeWriter pipeWriter, DPSKSymbol[] symbols)
     {
-        readonly List<float> buffer = buffer;
-        public readonly void Add(float sample)
-        {
-            buffer.Add(sample);
-        }
-    }
-
-    public OFDMModulator(params DPSKSymbolOption[] options) : this(options.Select(o => new DPSKSymbol(o)).ToArray())
-    {
-    }
-
-    public OFDMModulator(params DPSKSymbol[] symbols)
-    {
+        // modulators = symbols.Select(s => new DPSKModulator(s)).ToArray();
+        this.symbols = symbols;
+        // NumSamplesPerSymbol = modulators[0].NumSamplesPerSymbol;
         numSamplesPerSymbol = symbols[0].Option.NumSamplesPerSymbol;
 
-#if DEBUG
+        SourceWriter = pipeWriter;
+
         if (symbols.Any(s => s.Option.NumSamplesPerSymbol != numSamplesPerSymbol))
         {
             throw new ArgumentException("All symbols must have the same number of samples per symbol");
         }
-#endif
-        modulators = symbols.Select(s => new DPSKModulator(s)).ToArray();
     }
 
-    public void Modulate(ReadOnlySpan<byte> dataBuffer, BlockingCollection<float> sampleBuffer)
-    {
-        Modulate(dataBuffer, new AddableBlockingCollection(sampleBuffer));
-    }
-    public void Modulate(ReadOnlySpan<byte> dataBuffer, Span<float> sampleBuffer)
-    {
-        var symbols = new float[8][];
-        for (int i = 0; i < dataBuffer.Length; i += modulators.Length)
-        {
-            // buffer.AsSpan().Clear();
-            for (int j = 0; j < modulators.Length && i + j < dataBuffer.Length; j++)
-            {
-                symbols.AsSpan().Clear();
-                modulators[j].GetSamples(dataBuffer[i + j], symbols);
+    // public OFDMModulator(DPSKSymbolOption[] options) : this(options.Select(o => new DPSKSymbol(o)).ToArray())
+    // {
+    // }
 
-                for (int k = 0; k < 8; k++)
-                {
-                    for (int l = 0; l < numSamplesPerSymbol; l++)
-                    {
-                        sampleBuffer[((i + j) * 8 + k) * numSamplesPerSymbol + l] += symbols[k][l];
-                    }
-                }
-                // for (int k = 0; k < 8; k++)
-                // {
-                //     var samples = modulators[j].GetSamples(dataBuffer, (i + j) * 8 + k);
-                //     for (int l = 0; l < numSamplesPerSymbol; l++)
-                //     {
-                //         buffer[k * numSamplesPerSymbol + l] += samples[l];
-                //     }
-                // }
-            }
-        }
-    }
+    // public void Init(WaveFormat waveFormat, PipeWriter sampleBuffer)
+    // {
+    //     if (this.sampleBuffer is not null)
+    //     {
+    //         throw new InvalidOperationException("sampleBuffer is already initialized");
+    //     }
 
-    public float[] Modulate(ReadOnlySpan<byte> dataBuffer)
-    {
-        var sampleBuffer = new List<float>();
-        Modulate(dataBuffer, new AddableList(sampleBuffer));
-        return [.. sampleBuffer];
-    }
-    private void Modulate<T>(ReadOnlySpan<byte> dataBuffer, T sampleBuffer)
-        where T : IAddable<float>
+    //     this.sampleBuffer = sampleBuffer;
+
+    //     foreach (var m in modulators)
+    //     {
+    //         m.Init(waveFormat, sampleBuffer);
+    //     }
+    // }
+
+    // public OFDMModulator Build(WaveFormat waveFormat, PipeWriter sampleBuffer)
+    // {
+    //     Init(waveFormat, sampleBuffer);
+    //     return this;
+    // }
+
+    // public void Modulate(ReadOnlySpan<byte> dataBuffer)
+    // {
+    //     if (sampleBuffer is null)
+    //     {
+    //         throw new InvalidOperationException("sampleBuffer is not initialized");
+    //     }
+
+    //     Modulate(dataBuffer, new ExtendAblePipe(sampleBuffer));
+    // }
+
+    // public void Modulate(ReadOnlySpan<byte> dataBuffer, Span<float> sampleBuffer)
+    // {
+    //     var symbols = new float [8][];
+    //     for (int i = 0; i < dataBuffer.Length; i += modulators.Length)
+    //     {
+    //         // buffer.AsSpan().Clear();
+    //         for (int j = 0; j < modulators.Length && i + j < dataBuffer.Length; j++)
+    //         {
+    //             symbols.AsSpan().Clear();
+    //             modulators[j].GetSamples(dataBuffer[i + j], symbols);
+
+    //             for (int k = 0; k < 8; k++)
+    //             {
+    //                 for (int l = 0; l < numSamplesPerSymbol; l++)
+    //                 {
+    //                     sampleBuffer[((i + j) * 8 + k) * numSamplesPerSymbol + l] += symbols[k][l];
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+
+    // public void Modulate(ReadOnlySpan<byte> dataBuffer, out byte[] sampleBuffer)
+    // {
+    //     var samples = new List<byte>();
+    //     Modulate(dataBuffer, new ExtendAbleList(samples));
+    //     sampleBuffer = [..samples];
+    // }
+    // private void Modulate<T>(ReadOnlySpan<byte> dataBuffer, T sampleBuffer)
+    //     where T : IExtendable<float>
+    // {
+    //     var buffer = new float[NumSamplesPerSymbol * 8];
+    //     // Console.WriteLine(dataBuffer.Length);
+    //     var symbols = new float [8][];
+    //     for (int i = 0; i < dataBuffer.Length; i += modulators.Length)
+    //     {
+    //         buffer.AsSpan().Clear();
+    //         for (int j = 0; j < modulators.Length && i + j < dataBuffer.Length; j++)
+    //         {
+    //             symbols.AsSpan().Clear();
+    //             modulators[j].GetSamples(dataBuffer[i + j], symbols);
+
+    //             for (int k = 0; k < 8; k++)
+    //             {
+    //                 for (int l = 0; l < NumSamplesPerSymbol; l++)
+    //                 {
+    //                     buffer[k * NumSamplesPerSymbol + l] += symbols[k][l];
+    //                 }
+    //             }
+    //         }
+    //         sampleBuffer.Extend(buffer);
+    //     }
+    // }
+
+    public void Write(ReadOnlySpan<byte> dataBuffer)
     {
         var buffer = new float[numSamplesPerSymbol * 8];
-        Console.WriteLine(dataBuffer.Length);
-        var symbols = new float[8][];
-        for (int i = 0; i < dataBuffer.Length; i += modulators.Length)
+        // Console.WriteLine(dataBuffer.Length);
+        // var symbolsBuffer = new ReadOnlyMemory<float>[8];
+        for (int i = 0; i < dataBuffer.Length; i += symbols.Length)
         {
             buffer.AsSpan().Clear();
-            for (int j = 0; j < modulators.Length && i + j < dataBuffer.Length; j++)
+            for (int j = 0; j < symbols.Length && i + j < dataBuffer.Length; j++)
             {
-                symbols.AsSpan().Clear();
-                modulators[j].GetSamples(dataBuffer[i + j], symbols);
-
-                for (int k = 0; k < 8; k++)
-                {
-                    for (int l = 0; l < numSamplesPerSymbol; l++)
-                    {
-                        buffer[k * numSamplesPerSymbol + l] += symbols[k][l];
-                    }
-                }
+                // symbols.AsSpan().Clear();
+                // modulators[j].GetSamples(dataBuffer[i + j], symbols);
                 // for (int k = 0; k < 8; k++)
                 // {
-                //     var samples = modulators[j].GetSamples(dataBuffer, (i + j) * 8 + k);
-                //     for (int l = 0; l < numSamplesPerSymbol; l++)
-                //     {
-                //         buffer[k * numSamplesPerSymbol + l] += samples[l];
-                //     }
+                //     symbols[k] = ModulateHelper.GetModulateSamples(symbols[j].Samples, dataBuffer, i + j);
                 // }
+                var data = dataBuffer[i + j];
+                for (int k = 0; k < 8; k++)
+                {
+                    var symbolSpan = symbols[j].Samples.Span[data >> k & 1].Span;
+                    for (int l = 0; l < numSamplesPerSymbol; l++)
+                    {
+                        buffer[k * numSamplesPerSymbol + l] += symbolSpan[l];
+                    }
+                }
             }
-            foreach (var sample in buffer)
-            {
-                sampleBuffer.Add(sample);
-            }
+            // sampleBuffer.Extend(buffer);
+            SourceWriter.Write(buffer.AsBytes());
         }
     }
+    // private void Modulate<T>(ReadOnlySpan<byte> dataBuffer, T sampleBuffer)
+    //     where T : IExtendable<float>
+    // {
+    //     var buffer = new float[NumSamplesPerSymbol * 8];
+    //     // Console.WriteLine(dataBuffer.Length);
+    //     var symbols = new float [8][];
+    //     for (int i = 0; i < dataBuffer.Length; i += modulators.Length)
+    //     {
+    //         buffer.AsSpan().Clear();
+    //         for (int j = 0; j < modulators.Length && i + j < dataBuffer.Length; j++)
+    //         {
+    //             symbols.AsSpan().Clear();
+    //             modulators[j].GetSamples(dataBuffer[i + j], symbols);
+
+    //             for (int k = 0; k < 8; k++)
+    //             {
+    //                 for (int l = 0; l < NumSamplesPerSymbol; l++)
+    //                 {
+    //                     buffer[k * NumSamplesPerSymbol + l] += symbols[k][l];
+    //                 }
+    //             }
+    //         }
+    //         sampleBuffer.Extend(buffer);
+    //     }
+    // }
 }
 
-public class OFDMDemodulator : IDemodulator
+// public class OFDMDemodulatorBuilder
+// (params DPSKSymbol[] symbols) : IReaderBuilder<OFDMDemodulator>
+// {
+//     // private readonly DPSKDemodulator[] demodulators = demodulators;
+//     private readonly DemodulateLength demodulateLength = DemodulateLength.Default;
+//     private readonly DPSKSymbol[] symbols = symbols;
+
+//     public OFDMDemodulatorBuilder(DPSKSymbol[] symbols, DemodulateLength demodulateLength) : this(symbols)
+//     {
+//         this.demodulateLength = demodulateLength;
+//     }
+
+//     // public OFDMDemodulatorBuilder(DPSKSymbolOption[] options) : this(options.Select(o => new
+//     // DPSKSymbol(o)).ToArray())
+//     // {
+//     // }
+//     // public OFDMDemodulatorBuilder(DPSKSymbolOption[] options, DemodulateLength demodulateLength)
+//     //     : this(options.Select(o => new DPSKSymbol(o)).ToArray(), demodulateLength)
+//     // {
+//     // }
+
+//     public OFDMDemodulator Build(WaveFormat waveFormat, PipeReader sampleBuffer)
+//     {
+//         var sampleProvider = new StreamWaveProvider(waveFormat, sampleBuffer.AsStream()).ToSampleProvider().ToMono();
+//         var demodulatorBuilder =
+//             symbols.Select(s => new DPSKDemodulator(sampleProvider, s, demodulateLength)).ToArray();
+//         return new OFDMDemodulator(sampleProvider, demodulatorBuilder);
+//     }
+// }
+
+public class OFDMDemodulator : IPipeReader<byte>
 {
-    private readonly DPSKDemodulator[] demodulators;
+    private readonly DPSKSymbol[] symbols;
+    // private readonly DPSKDemodulator[] demodulators;
+    private readonly ISampleProvider sampleProvider;
+    private readonly ISampleProvider viewSampleProvider;
     private readonly int numSamplesPerSymbol;
 
-    public OFDMDemodulator(params DPSKSymbolOption[] options) : this(options.Select(o => new DPSKSymbol(o)).ToArray())
-    {
-    }
+    public PipeReader SourceReader { get; }
 
-    public OFDMDemodulator(params DPSKSymbol[] symbols)
+    //     public OFDMDemodulator(WaveFormat waveFormat, params DPSKSymbolOption[] options)
+    //         : this(waveFormat, options.Select(o => new DPSKSymbol(o)).ToArray())
+    //     {
+    //     }
+
+    //     public OFDMDemodulator(WaveFormat waveFormat, params DPSKSymbol[] symbols)
+    //     {
+    //         this.waveFormat = waveFormat;
+    //         numSamplesPerSymbol = symbols[0].Option.NumSamplesPerSymbol;
+
+    // #if DEBUG
+    //         if (symbols.Any(s => s.Option.NumSamplesPerSymbol != numSamplesPerSymbol))
+    //         {
+    //             throw new ArgumentException("All symbols must have the same number of samples per symbol");
+    //         }
+    // #endif
+    //         demodulators = symbols.Select(s => new DPSKDemodulator(waveFormat, s)).ToArray();
+    //         // Console.WriteLine();
+    //     }
+    public OFDMDemodulator(PipeReader pipeReader, WaveFormat waveFormat, DPSKSymbol[] symbols)
     {
+        this.symbols = symbols;
         numSamplesPerSymbol = symbols[0].Option.NumSamplesPerSymbol;
+        sampleProvider = new StreamWaveProvider(waveFormat, pipeReader.AsStream()).ToSampleProvider().ToMono();
+        viewSampleProvider = new PipeViewProvider(waveFormat, pipeReader);
 
-#if DEBUG
+        SourceReader = pipeReader;
+
         if (symbols.Any(s => s.Option.NumSamplesPerSymbol != numSamplesPerSymbol))
         {
             throw new ArgumentException("All symbols must have the same number of samples per symbol");
         }
-#endif
-        demodulators = symbols.Select(s => new DPSKDemodulator(s)).ToArray();
-        // Console.WriteLine();
     }
+    // public OFDMDemodulator(DPSKSymbol[] symbols)
+    // {
+    //     demodulators = symbols.Select(s => new DPSKDemodulator(s)).ToArray();
+    //     NumSamplesPerSymbol = demodulators[0].NumSamplesPerSymbol;
+    // }
 
-    public void Demodulate(BlockingCollection<float> sampleBuffer, Span<byte> dataBuffer)
+    // public OFDMDemodulator(DPSKSymbol[] symbols, DemodulateLength demodulateLength)
+    // {
+    //     demodulators = symbols.Select(s => new DPSKDemodulator(s, demodulateLength)).ToArray();
+    //     NumSamplesPerSymbol = demodulators[0].NumSamplesPerSymbol;
+    // }
+
+    // public void Init(WaveFormat waveFormat, PipeReader sampleBuffer)
+    // {
+    //     if (sampleProvider is not null)
+    //     {
+    //         throw new InvalidOperationException("sampleProvider is already initialized");
+    //     }
+
+    //     sampleProvider = new StreamWaveProvider(waveFormat, sampleBuffer.AsStream()).ToSampleProvider().ToMono();
+
+    //     foreach (var dm in demodulators)
+    //     {
+    //         dm.Init(waveFormat, sampleBuffer);
+    //     }
+    // }
+
+    // public OFDMDemodulator Build(WaveFormat waveFormat, PipeReader sampleBuffer)
+    // {
+    //     Init(waveFormat, sampleBuffer);
+    //     return this;
+    // }
+
+    public bool TryReadTo(Span<byte> dst, bool advandce = true)
     {
-        var consuming = sampleBuffer.GetConsumingEnumerable();
-
         var buffer = new float[numSamplesPerSymbol * 8];
+        var provider = advandce ? sampleProvider : viewSampleProvider;
 
-        for (int i = 0; i < dataBuffer.Length; i += demodulators.Length)
+        for (int i = 0; i < dst.Length; i += symbols.Length)
         {
-            consuming.TakeInto(buffer);
-
-            for (int j = 0; j < demodulators.Length && i + j < dataBuffer.Length; j++)
+            if (provider.ReadExact(buffer, 0, buffer.Length) == 0)
             {
-                dataBuffer[i + j] = demodulators[j].Demodulate<byte>(buffer, 8);
+                return false;
+            }
+
+            for (int j = 0; j < symbols.Length && i + j < dst.Length; j++)
+            {
+                dst[i + j] = ModulateHelper.DotProductDemodulateByte(buffer, symbols[j].Samples.Span[0].Span);
             }
         }
+        return true;
     }
 
-    public byte[] Demodulate(BlockingCollection<float> sampleBuffer)
-    {
-        var dataLengthInBit = demodulators[0].GetLength(sampleBuffer.GetConsumingEnumerable());
+    // public bool Demodulate(Span<byte> dataBuffer)
+    // {
+    //     if (sampleProvider is null)
+    //     {
+    //         throw new InvalidOperationException("sampleProvider is not initialized");
+    //     }
 
-        byte[]? data = new byte[(int)Math.Ceiling(dataLengthInBit / 8f)];
+    //     var buffer = new float[NumSamplesPerSymbol * 8];
 
-        Demodulate(sampleBuffer, data.AsSpan());
+    //     for (int i = 0; i < dataBuffer.Length; i += demodulators.Length)
+    //     {
+    //         if (sampleProvider.ReadExact(buffer, 0, buffer.Length) == 0)
+    //         {
+    //             return false;
+    //         }
 
-        return data;
-    }
+    //         for (int j = 0; j < demodulators.Length && i + j < dataBuffer.Length; j++)
+    //         {
+    //             dataBuffer[i + j] = demodulators[j].Demodulate<byte>(buffer, 8);
+    //         }
+    //     }
+    //     return true;
+    // }
 
-    public void Demodulate(ReadOnlySpan<float> samples, Span<byte> dataBuffer)
-    {
-        for (int i = 0, j = 0; i < dataBuffer.Length; i += demodulators.Length, j++)
-        {
-            var sampleSlice = samples.Slice(j * numSamplesPerSymbol * 8, numSamplesPerSymbol * 8);
-            for (int k = 0; k < demodulators.Length && i + k < dataBuffer.Length; k++)
-            {
-                dataBuffer[i + k] = demodulators[k].Demodulate<byte>(sampleSlice, 8);
-            }
-        }
-    }
+    // public bool Demodulate(out byte[] dataBuffer)
+    // {
+    //     var dataLengthInBit = demodulators[0].GetLength();
+    //     dataBuffer = new byte[(int)Math.Ceiling(dataLengthInBit / 8f)];
+
+    //     if (dataLengthInBit == 0)
+    //     {
+    //         return false;
+    //     }
+
+    //     return Demodulate(dataBuffer.AsSpan());
+    // }
+
+    // public bool Demodulate(ReadOnlySpan<float> samples, Span<byte> dataBuffer)
+    // {
+    //     if (dataBuffer.Length * 8 * numSamplesPerSymbol > samples.Length * demodulators.Length)
+    //     {
+    //         return false;
+    //     }
+
+    //     for (int i = 0, j = 0; i < dataBuffer.Length; i += demodulators.Length, j++)
+    //     {
+    //         var sampleSlice = samples.Slice(j * numSamplesPerSymbol * 8, numSamplesPerSymbol * 8);
+    //         for (int k = 0; k < demodulators.Length && i + k < dataBuffer.Length; k++)
+    //         {
+    //             dataBuffer[i + k] = demodulators[k].Demodulate<byte>(sampleSlice, 8);
+    //         }
+    //     }
+
+    //     return true;
+    // }
 }
