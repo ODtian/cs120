@@ -17,7 +17,7 @@ namespace CS120.Symbol;
 // }
 public interface ISymbol
 {
-    float[][] Samples { get; }
+    ReadOnlyMemory<ReadOnlyMemory<float>> Samples { get; }
     // public static abstract float[][] Get(TOption symbolOption);
 }
 
@@ -29,13 +29,13 @@ public readonly record struct ChirpSymbolOption
 
 public readonly struct ChirpSymbol : ISymbol
 {
-    public float[][] Samples { get; }
+    public ReadOnlyMemory<ReadOnlyMemory<float>> Samples { get; }
     public ChirpSymbolOption Option { get; }
     public ChirpSymbol(ChirpSymbolOption symbolOption)
     {
         Option = symbolOption;
 
-        var result = new float [Option.NumSymbols][];
+        var result = new ReadOnlyMemory<float>[Option.NumSymbols];
         var builder = new ChirpBuilder();
 
         var sig = builder.SetParameter("low", -1f)
@@ -63,13 +63,13 @@ public readonly record struct DPSKSymbolOption
 
 public readonly struct DPSKSymbol : ISymbol
 {
-    public float[][] Samples { get; }
+    public ReadOnlyMemory<ReadOnlyMemory<float>> Samples { get; }
 
     public DPSKSymbolOption Option { get; }
     public DPSKSymbol(DPSKSymbolOption symbolOption)
     {
         Option = symbolOption;
-        var result = new float [Option.NumSymbols][];
+        var result = new ReadOnlyMemory<float>[Option.NumSymbols];
 
         // for (int i = 0; i < symbolOption.NumSymbols; i++)
         var sig = new SineBuilder()

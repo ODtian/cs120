@@ -34,7 +34,7 @@ class Program
         FreqB = 10_000 // Read config or something
     };
 
-    public static float corrThreshold = 0.3f;
+    public static float corrThreshold = 0.1f;
     public static int maxPeakFalling = chirpOption.NumSamplesPerSymbol;
     public static float smoothedEnergyFactor = 1f / 64f;
 
@@ -44,69 +44,67 @@ class Program
     public const int magicNum = 1;
     public const int idNum = 2;
     public const int lengthNum = 2;
-    public static int dataLengthInBit = (dataNum + eccNums + magicNum + lengthNum + idNum) * 8;
+    public static int dataLengthInByte = dataNum + eccNums + magicNum + lengthNum + idNum;
     // public static int dataLengthInBit = (2 + 60 + 40) * 8;
 
-    static Receiver InitReceiver<TWaveIn>(AudioManager audioManager, FileInfo? file)
+    static Receiver InitReceiver<TWaveIn>(WaveFormat waveFormat, PipeReader pipe)
         where TWaveIn : IWaveIn, new()
     {
-        WaveFormat receivedFormat;
-        if (file is null)
-        {
-            receivedFormat = audioManager.GetRecorderWaveFormat<TWaveIn>();
-        }
-        else
-        {
-            using var reader = new WaveFileReader(file.FullName);
-            receivedFormat = reader.WaveFormat;
-            // .AsStandardWaveFormat();
-        }
-        Console.WriteLine(receivedFormat.SampleRate);
         // pipe = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
 
         // var rec = audioManager.Record<TWaveIn>(pipe.Writer.AsStream(), CancellationToken.None);
         var receiver = new Receiver(
-            receivedFormat,
+            // receivedFormat,
             // new StreamWaveProvider(receivedFormat, pipe.Reader.AsStream()).ToSampleProvider().ToMono(),
             new PreambleDetection(
-                new ChirpPreamble(chirpOption with { SampleRate = receivedFormat.SampleRate }),
+                pipe,
+                waveFormat,
+                new ChirpPreamble(chirpOption with { SampleRate = waveFormat.SampleRate }),
                 corrThreshold,
                 smoothedEnergyFactor,
                 maxPeakFalling
             ),
-            // new DPSKDemodulator(option with { SampleRate = receivedFormat.SampleRate })
-            new OFDMDemodulator([
-                option with { SampleRate = receivedFormat.SampleRate },
-                option with {
-                    Freq = option.Freq * 2,
-                    NumRedundant = option.NumRedundant * 2,
-                    SampleRate = receivedFormat.SampleRate
-                }
-            ])
+            new DPSKDemodulator(pipe, waveFormat, option with { SampleRate = waveFormat.SampleRate }),
+            // new OFDMDemodulator(
+            //     pipe,
+            //     waveFormat,
+            //     [
+            //         option with { SampleRate = waveFormat.SampleRate },
+            //         option with {
+            //             Freq = option.Freq * 2,
+            //             NumRedundant = option.NumRedundant * 2,
+            //             SampleRate = waveFormat.SampleRate
+            //         }
+            //     ]
+            // ),
+            new DemodulateLength.FixedLength(dataLengthInByte)
         );
         return receiver;
     }
 
-    static Transmitter InitTransmitter<TWaveOut>(AudioManager audioManager, out NonBlockingPipeWaveProvider provider)
+    static Transmitter InitTransmitter<TWaveOut>(WaveFormat waveFormat, PipeWriter pipe)
         where TWaveOut : IWavePlayer, new()
     {
-        var sendFormat = audioManager.GetPlayerWaveFormat<TWaveOut>();
-        var transmitterFormat = WaveFormat.CreateIeeeFloatWaveFormat(sendFormat.SampleRate, 1);
         var transmitter = new Transmitter(
-            transmitterFormat,
-            new ChirpPreamble(chirpOption with { SampleRate = sendFormat.SampleRate }),
-            // new DPSKModulator(option with { SampleRate = sendFormat.SampleRate }),
-            new OFDMModulator([
-                option with { SampleRate = sendFormat.SampleRate },
-                option with {
-                    Freq = option.Freq * 2, NumRedundant = option.NumRedundant * 2, SampleRate = sendFormat.SampleRate
-                }
-            ]),
+            waveFormat,
+            pipe,
+            new ChirpPreamble(chirpOption with { SampleRate = waveFormat.SampleRate }),
+            new DPSKModulator(pipe, option with { SampleRate = waveFormat.SampleRate }),
+            // new OFDMModulator(
+            //     pipe,
+            //     [
+            //         option with { SampleRate = waveFormat.SampleRate },
+            //         option with {
+            //             Freq = option.Freq * 2,
+            //             NumRedundant = option.NumRedundant * 2,
+            //             SampleRate = waveFormat.SampleRate
+            //         }
+            //     ]
+            // ),
             // sendFormat.ConvertLatencyToByteSize
-            50
+            0
             // sendFormat.ConvertLatencyToByteSize(1)
         );
-        provider = new(transmitterFormat, transmitter.Samples);
         return transmitter;
     }
 
@@ -321,58 +319,29 @@ class Program
     {
         using var cts = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource());
 
-        using var transmitter = InitTransmitter<WasapiOut>(audioManager, out var provider);
+        var pipe = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
 
-        Console.WriteLine("start");
-        var exec = transmitter.Execute(cts.Source.Token);
-
-        Console.WriteLine(AudioManager.ListAsioDevice()[0]);
         // var wavePro
         // var play = Task.CompletedTask;
+        var waveFormat = audioManager.GetPlayerWaveFormat<WasapiOut>();
+        var provider = new NonBlockingPipeWaveProvider(
+            WaveFormat.CreateIeeeFloatWaveFormat(waveFormat.SampleRate, 1), pipe.Reader
+        );
+
         var play = toWav switch {
             null => audioManager.Play<WasapiOut>(provider, cts.Source.Token),
-            // null => audioManager.Play(transmitter.Samples.ToWaveProvider(), "ASIO4ALL v2", cts.Source.Token, 0),
             FileInfo => Task.Run(
                 () =>
                 {
                     using var writer = new WaveFileWriter(toWav.FullName, provider.WaveFormat);
-                    transmitter.Samples.AsStream().CopyTo(writer);
-                    // await exec;
-                    // var buffer = new float[1024];
-
-                    // while (true)
-                    // {
-                    //     var length = transmitter.Samples.Read(buffer, 0, buffer.Length);
-                    //     if (length == 0)
-                    //     {
-                    //         break;
-                    //     }
-                    //     writer.WriteSamples(buffer, 0, length);
-                    // }
-                    // using var timer = new System.Timers.Timer(
-                    //     buffer.Length / (float)transmitter.Samples.WaveFormat.SampleRate
-                    // ) { AutoReset = true };
-                    // writer.
-                    // var tcs = new TaskCompletionSource();
-                    // timer.Elapsed += (s, e) =>
-                    // {
-                    //     var length = transmitter.Samples.Read(buffer, 0, buffer.Length);
-                    //     if (length == 0)
-                    //     {
-                    //         tcs.SetResult();
-                    //         return;
-                    //     }
-
-                    //     buffer.AsSpan(length).Clear();
-                    //     writer.WriteSamples(buffer, 0, buffer.Length);
-                    // };
-                    // timer.Start();
-                    // await tcs.Task;
-                    // timer.Close();
-                    // writer.Close();
+                    pipe.Reader.AsStream().CopyTo(writer);
                 }
             ),
         };
+
+        using var transmitter = InitTransmitter<WasapiOut>(waveFormat, pipe.Writer);
+
+        var exec = transmitter.Execute(cts.Source.Token);
 
         var dataPipe = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
         var readTask = Task.Run(
@@ -403,6 +372,7 @@ class Program
                 }
             }
         );
+
         var index = 0;
         while (true)
         {
@@ -418,7 +388,7 @@ class Program
                 //     Console.WriteLine(Convert.ToString(d, 2).PadLeft(8, '0'));
                 // }
                 await transmitter.Packets.WriteAsync(
-                    dataArray.IDEncode(index++).LengthEncode(dataNum + 2).RSEncode(eccNums), cts.Source.Token
+                    dataArray.IDEncode(index++).LengthEncode(dataNum + idNum).RSEncode(eccNums), cts.Source.Token
                 );
             }
 
@@ -438,26 +408,32 @@ class Program
     {
         using var cts = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource());
 
-        using var receiver = InitReceiver<WasapiCapture>(audioManager, fromWav);
+        var pipe = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
 
-        Console.WriteLine("start");
+        Task rec;
+        WaveFormat waveFormat;
 
-        var exec = receiver.Execute(cts.Source.Token);
-        var rec = fromWav switch {
-            null => audioManager.Record<WasapiCapture>(receiver.Samples.AsStream(), cts.Source.Token),
-            FileInfo => Task.Run(
-                () =>
-                {
-                    using var reader = new WaveFileReader(fromWav.FullName);
-                    reader.CopyTo(receiver.Samples.AsStream());
-                    receiver.Samples.Complete();
-                }
-            ),
-        };
+        if (fromWav is null)
+        {
+            rec = audioManager.Record<WasapiCapture>(pipe.Writer.AsStream(), cts.Source.Token);
+            waveFormat = audioManager.GetRecorderWaveFormat<WasapiCapture>();
+        }
+        else
+        {
+            rec = Task.CompletedTask;
+            using var reader = new WaveFileReader(fromWav.FullName);
+            waveFormat = reader.WaveFormat;
+            reader.CopyTo(pipe.Writer.AsStream());
+            pipe.Writer.Complete();
+        }
+        Console.WriteLine(waveFormat.SampleRate);
+
         // PipeStream
-        using var stream = file switch { null => Console.OpenStandardOutput(), FileInfo => file.OpenWrite() };
+        using var receiver = InitReceiver<WasapiCapture>(waveFormat, pipe.Reader);
+        var exec = receiver.Execute(cts.Source.Token);
 
         // var index = 0;
+        using var stream = file switch { null => Console.OpenStandardOutput(), FileInfo => file.OpenWrite() };
         await foreach (var packet in receiver.Packets.ReadAllAsync(cts.Source.Token))
         {
             var p = packet.RSDecode(eccNums, out var eccValid).LengthDecode(out var lengthValid).IDDecode(out var id);

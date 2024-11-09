@@ -176,7 +176,6 @@ static class BytePacketExtension
     public static byte[] LengthEncode(this byte[] packet, int padding)
     {
         var length = BitConverter.GetBytes((ushort)packet.Length);
-        Console.WriteLine(packet.Length);
         return [..length, ..packet, ..new byte[padding - packet.Length]];
     }
 

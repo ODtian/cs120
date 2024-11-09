@@ -75,7 +75,7 @@ public class PipeViewProvider : IWaveProvider, ISampleProvider
             return 0;
         }
 
-        var result = Reader.ReadAtLeastAsync(count).AsTask().GetAwaiter().GetResult();
+        var result = Reader.ReadAtLeastAsync(count).AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
 
         if (result.IsFinished())
         {
@@ -188,15 +188,51 @@ public interface IExtendable<T>
     void Extend(ReadOnlySpan<T> other);
 }
 
-public interface IReaderBuilder<out T>
+public interface IPipeReaderBuilder<out T>
 {
     T Build(WaveFormat waveFormat, PipeReader sampleBuffer);
 }
 
-public interface IWriterBuilder<out T>
+public interface IPipeWriterBuilder<out T>
 {
     T Build(WaveFormat waveFormat, PipeWriter sampleBuffer);
 }
+
+public interface IPipeReader<T>
+{
+    PipeReader SourceReader { get; }
+
+    bool TryReadTo(Span<T> dst, bool advandce = true);
+}
+
+public interface IPipeWriter<T>
+{
+    PipeWriter SourceWriter { get; }
+
+    void Write(ReadOnlySpan<T> src);
+
+    ValueTask<FlushResult> FlushAsync(CancellationToken ct)
+    {
+        return SourceWriter.FlushAsync(ct);
+    }
+}
+
+public interface IPipeAdvance
+{
+    PipeReader SourceReader { get; }
+    bool TryAdvance();
+}
+
+// public class BufferWriter
+// (PipeWriter pipeWriter) : IPipeWriter<byte>
+// {
+//     public PipeWriter SourceWriter { get; } = pipeWriter;
+
+//     public void Write(ReadOnlySpan<byte> dataBuffer)
+//     {
+//         SourceWriter.Write(dataBuffer);
+//     }
+// }
 
 public static class Codec4B5B
 {
@@ -361,6 +397,53 @@ public static class CodecRS
     }
 }
 
+public static class ModulateHelper
+{
+    public static byte DotProductDemodulateByte(ReadOnlySpan<float> samples, ReadOnlySpan<float> symbol)
+    {
+        byte result = 0;
+        for (byte i = 0; i < 8; i++)
+        {
+
+            var energy = 0f;
+            for (int j = 0; j < symbol.Length; j++)
+            {
+                energy += samples[j + i * symbol.Length] * symbol[j];
+            }
+
+            result |= energy < 0f ? (byte)(1 << i) : (byte)0;
+        }
+
+        return result;
+    }
+
+    public static void DotProductDemodulateByte(ReadOnlySpan<float> samples, ReadOnlySpan<float> symbol, Span<byte> dst)
+    {
+        dst.Clear();
+        for (int i = 0; i < dst.Length; i++)
+        {
+            for (int j = 0; j < 8; j++)
+            {
+
+                var energy = 0f;
+                for (int k = 0; k < symbol.Length; k++)
+                {
+                    energy += samples[k + j * symbol.Length] * symbol[k];
+                }
+
+                dst[i] |= energy < 0f ? (byte)(1 << j) : (byte)0;
+            }
+        }
+    }
+
+    public static ReadOnlyMemory<float> GetModulateSamples(
+        ReadOnlyMemory<ReadOnlyMemory<float>> symbol, byte data, int bitOffset
+    )
+    {
+        return symbol.Span[(data >> bitOffset) & 1];
+    }
+}
+
 public static class DataHelper
 {
     public static byte[] GenerateData(int length)
@@ -509,6 +592,7 @@ public static class DataHelper
             return true;
         }
     }
+
     // static byte[] GenerateData(int length)
     // {
     //     var fragment = new byte[] {
