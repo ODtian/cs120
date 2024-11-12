@@ -2,6 +2,8 @@ using System.Buffers;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.IO.Pipelines;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using CS120.Extension;
 using MathNet.Numerics.Data.Matlab;
@@ -144,59 +146,20 @@ public class NonBlockingPipeWaveProvider
     }
 }
 
-public class CancelKeyPressCancellationTokenSource : IDisposable
-{
-    public CancellationTokenSource Source { get; }
-    private readonly ConsoleCancelEventHandler cancelHandler;
-    private bool enabled = false;
+// public interface IExtendable<T>
+// {
+//     void Extend(ReadOnlySpan<T> other);
+// }
 
-    public CancelKeyPressCancellationTokenSource(CancellationTokenSource source, bool enabled = true)
-    {
-        Source = source;
-        cancelHandler =
-            new((s, e) =>
-                {
-                    e.Cancel = true;
-                    Source.Cancel();
-                });
+// public interface IPipeReaderBuilder<out T>
+// {
+//     T Build(WaveFormat waveFormat, PipeReader sampleBuffer);
+// }
 
-        Enable(enabled);
-    }
-
-    public void Enable(bool enable)
-    {
-        if (!enabled && enable)
-        {
-            Console.CancelKeyPress += cancelHandler;
-        }
-        else if (enabled && !enable)
-        {
-            Console.CancelKeyPress -= cancelHandler;
-        }
-        enabled = enable;
-    }
-
-    public void Dispose()
-    {
-        Enable(false);
-        Source.Dispose();
-    }
-}
-
-public interface IExtendable<T>
-{
-    void Extend(ReadOnlySpan<T> other);
-}
-
-public interface IPipeReaderBuilder<out T>
-{
-    T Build(WaveFormat waveFormat, PipeReader sampleBuffer);
-}
-
-public interface IPipeWriterBuilder<out T>
-{
-    T Build(WaveFormat waveFormat, PipeWriter sampleBuffer);
-}
+// public interface IPipeWriterBuilder<out T>
+// {
+//     T Build(WaveFormat waveFormat, PipeWriter sampleBuffer);
+// }
 
 public interface IPipeReader<T>
 {
@@ -360,7 +323,7 @@ public static class CodecRS
     // {
     //     CodecRS.eccNums = eccNums;
     // }
-    static public byte[] Encode(byte[] bytes, int eccNums)
+    public static byte[] Encode(ReadOnlySpan<byte> bytes, int eccNums)
     {
         var data = new byte[bytes.Length + 1 + eccNums];
         var toEncode = new int[data.Length];
@@ -380,7 +343,7 @@ public static class CodecRS
         return data;
     }
 
-    static public byte[] Decode(byte[] bytes, int eccNums, out bool valid)
+    public static byte[] Decode(ReadOnlySpan<byte> bytes, int eccNums, out bool valid)
     {
         var data = new byte[bytes.Length - 1 - eccNums];
         var toDecode = new int[bytes.Length];
@@ -771,4 +734,59 @@ public static class DataHelper
 
     //     return samples.ToArray();
     // }
+}
+
+public static partial class FileHelper
+{
+    public static async IAsyncEnumerable<byte[]> ReadFileChunk(FileInfo file, int chunkSize, bool binaryTxt = false, [
+        EnumeratorCancellation
+    ] CancellationToken ct = default)
+    {
+        var dataPipe = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
+        var task = Task.Run(
+            () =>
+            {
+                if (binaryTxt)
+                {
+                    using var fileData = file.OpenText();
+                    var txt = fileData.ReadToEnd().ToArray();
+                    // foreach (var b in txt)
+                    // {
+                    //     Console.WriteLine(b);
+                    //     // Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
+                    // }
+                    // foreach (var b in w)
+                    // {
+                    //     Console.WriteLine(Convert.ToString(b, 2).PadLeft(8, '0'));
+                    // }
+                    dataPipe.Writer.Write(DataHelper.Convert01ToBytes(txt));
+                }
+                else
+                    file.OpenRead().CopyTo(dataPipe.Writer.AsStream());
+                dataPipe.Writer.Complete();
+            },
+            ct
+        );
+
+        while (true)
+        {
+            var read = await dataPipe.Reader.ReadAsync(ct);
+            var buffer = read.Buffer;
+
+            while (DataHelper.TryChunkData(chunkSize, read.IsCompleted, ref buffer, out var chunk))
+                yield return chunk.ToArray();
+
+            dataPipe.Reader.AdvanceTo(buffer.Start, buffer.End);
+
+            if (read.IsCompleted)
+                break;
+        }
+        await task;
+    }
+}
+
+public static class BinaryIntegerSizeTrait<T>
+    where T : IBinaryInteger<T>
+{
+    public static readonly int Size = T.Zero.GetByteCount();
 }

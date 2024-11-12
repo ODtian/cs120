@@ -1,6 +1,10 @@
 using System.Numerics;
-using CS120.Extension;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using CS120.Mac;
 using CS120.Utils;
+using CS120.Utils.Codec;
+using CS120.Utils.Extension;
 using STH1123.ReedSolomon;
 namespace CS120.Packet;
 
@@ -176,8 +180,6 @@ public static class BytePacketExtension
     public static byte[] LengthEncode<T>(this byte[] packet, int? padding = null)
         where T : IBinaryInteger<T>
     {
-        // var length = BitConverter.GetBytes((ushort)packet.Length);
-
         var length = T.CreateChecked(packet.Length + BinaryIntegerSizeTrait<T>.Size);
         var result = new byte[BinaryIntegerSizeTrait<T>.Size + (padding ?? packet.Length)];
         length.WriteLittleEndian(result.AsSpan(0, BinaryIntegerSizeTrait<T>.Size));
@@ -191,8 +193,9 @@ public static class BytePacketExtension
     {
         packet.LengthGet<T>(out valid, out var length);
         // length = Math.Min(length, packet.Length - BinaryIntegerSizeTrait<T>.Size);
-        Console.WriteLine($"LengthDecode: {length} {packet.Length} 11111111111");
-        return packet[BinaryIntegerSizeTrait<T>.Size..Math.Min(length, packet.Length)];
+        byte[]? result = packet[BinaryIntegerSizeTrait<T>.Size..Math.Min(length, packet.Length)];
+        // Console.WriteLine($"LengthDecode: {length} {result.Length} 11111111111");
+        return result;
     }
 
     public static byte[] LengthGet<T>(this byte[] packet, out bool valid, out int length)
@@ -208,6 +211,8 @@ public static class BytePacketExtension
     {
         var result = new byte[BinaryIntegerSizeTrait<T>.Size + packet.Length];
         T.CreateChecked(id).WriteLittleEndian(result.AsSpan(0, BinaryIntegerSizeTrait<T>.Size));
+        // Console.WriteLine($"abc {id} {result[0]}");
+
         packet.CopyTo(result.AsSpan(BinaryIntegerSizeTrait<T>.Size));
         return result;
     }
@@ -223,6 +228,27 @@ public static class BytePacketExtension
         where T : IBinaryInteger<T>
     {
         id = int.CreateChecked(T.ReadLittleEndian(packet.AsSpan(0, BinaryIntegerSizeTrait<T>.Size), true));
+        return packet;
+    }
+
+    public static byte[] MacEncode(this byte[] packet, in MacFrame mac)
+    {
+        var macSpan = mac.AsBytes();
+        var result = new byte[packet.Length + macSpan.Length];
+        macSpan.CopyTo(result);
+        packet.CopyTo(result.AsSpan(macSpan.Length));
+        return result;
+    }
+
+    public static byte[] MacDecode(this byte[] packet, out MacFrame mac)
+    {
+        packet.MacGet(out mac);
+        return packet[Unsafe.SizeOf<MacFrame>()..];
+    }
+
+    public static byte[] MacGet(this byte[] packet, out MacFrame mac)
+    {
+        mac = MemoryMarshal.Read<MacFrame>(packet);
         return packet;
     }
 }

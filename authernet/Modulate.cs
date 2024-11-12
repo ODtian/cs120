@@ -1,16 +1,14 @@
 using NAudio.Wave;
-using System.Collections.Concurrent;
-using System.Numerics;
+
 using CS120.Symbol;
-using CS120.Extension;
-using CS120.Preamble;
-using System.Diagnostics;
-using CS120.Modulate;
+
 using CS120.Utils;
 using System.IO.Pipelines;
-using System.Runtime.InteropServices;
 using System.Buffers;
 using CommunityToolkit.HighPerformance;
+using CS120.Utils.Wave;
+using CS120.Utils.Helpers;
+using CS120.Utils.Extension;
 
 namespace CS120.Modulate;
 

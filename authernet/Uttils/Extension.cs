@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using NAudio.Wave;
 using STH1123.ReedSolomon;
 
-namespace CS120.Extension;
+namespace CS120.Utils.Extension;
 
 public static class IEnumerableExtension
 {
@@ -29,7 +29,8 @@ public static class IEnumerableExtension
 
 public static class SampleProviderExtension
 {
-    public static int ReadExact<T>(this T sampleProvider, float[] buffer, int offset, int count) where T : ISampleProvider
+    public static int ReadExact<T>(this T sampleProvider, float[] buffer, int offset, int count)
+        where T : ISampleProvider
     {
         var readed = 0;
         while (count > 0)
@@ -79,5 +80,14 @@ public static class WaveFormatExtension
     public static int ConvertSamplesToByteSize(this WaveFormat waveFormat, int samples)
     {
         return samples * waveFormat.BitsPerSample / 8;
+    }
+}
+
+public static class MemoryExtension
+{
+    public static Span<byte> AsBytes<T>(this T value)
+        where T : unmanaged
+    {
+        return MemoryMarshal.CreateSpan(ref Unsafe.As<T, byte>(ref value), Unsafe.SizeOf<T>());
     }
 }

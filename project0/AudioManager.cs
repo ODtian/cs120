@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Dynamic;
 using System.IO.Pipelines;
 using CS120.Utils;
+using NAudio.CoreAudioApi;
 using NAudio.Utils;
 using NAudio.Wave;
 namespace CS120;
@@ -226,6 +228,129 @@ public class AudioManager
     }
 
     public WaveFormat GetPlayerWaveFormat<TWaveOut>()
+        where TWaveOut : IWavePlayer, new()
+    {
+        using var player = new TWaveOut();
+        return player.OutputWaveFormat;
+    }
+}
+
+public static class Audio
+{
+    public static string[] ListAsioDevice()
+    {
+        return AsioOut.GetDriverNames();
+    }
+
+    public static async Task Play<T>(T player, CancellationToken ct)
+        where T : IWavePlayer
+    {
+        var tsc = new TaskCompletionSource();
+        player.PlaybackStopped += (s, e) =>
+        {
+            if (e.Exception != null)
+                tsc.SetException(e.Exception);
+            else
+                tsc.SetResult();
+        };
+
+        player.Play();
+
+        var stopTask = Task.CompletedTask;
+        using (ct.Register(() => stopTask = Task.Run(player.Stop)))
+        {
+            await tsc.Task;
+            await stopTask;
+        }
+    }
+
+    public static async Task Play<T>(IWaveProvider audioProvider, CancellationToken ct)
+        where T : IWavePlayer, new()
+    {
+        using var player = new T();
+        player.Init(audioProvider);
+        await Play(player, ct);
+    }
+
+    public static async Task Play<T>(string audioFile, CancellationToken ct)
+        where T : IWavePlayer, new()
+    {
+        using var audio = new AudioFileReader(audioFile);
+        await Play<T>(audio, ct);
+    }
+
+    public static async Task Record<T>(T recorder, CancellationToken ct)
+        where T : IWaveIn
+    {
+        // recorder recorder.DataAvailable += (s, e) =>
+        // {
+        //     // Console.WriteLine(e.BytesRecorded);
+        //     audioStream.Write(e.Buffer, 0, e.BytesRecorded);
+        // };
+
+        var tsc = new TaskCompletionSource();
+        recorder.RecordingStopped += (s, e) =>
+        {
+            if (e.Exception != null)
+                tsc.SetException(e.Exception);
+            else
+                tsc.SetResult();
+        };
+
+        recorder.StartRecording();
+
+        var stopTask = Task.CompletedTask;
+        using (ct.Register(() => stopTask = Task.Run(recorder.StopRecording)))
+        {
+            await tsc.Task;
+            await stopTask;
+        }
+    }
+
+    public static async Task Record<T>(Stream audioStream, CancellationToken ct)
+        where T : IWaveIn, new()
+    {
+        using var recorder = new T();
+        recorder.DataAvailable += (s, e) => audioStream.Write(e.Buffer, 0, e.BytesRecorded);
+        await Record(recorder, ct);
+    }
+
+    public static async Task Record<T>(string recordFile, CancellationToken ct)
+        where T : IWaveIn, new()
+    {
+        using var fileWriter = new WaveFileWriter(recordFile, GetRecorderWaveFormat<T>());
+        await Record<T>(fileWriter, ct);
+    }
+
+    public static MMDevice GetWASAPIDevice(string deviceName, DataFlow dataFlow)
+    {
+        return new MMDeviceEnumerator()
+            .EnumerateAudioEndPoints(dataFlow, DeviceState.Active)
+            .First(device => device.FriendlyName == deviceName);
+    }
+    public static async Task RecordThenPlay<TWaveIn, TWaveOut>(IEnumerable<CancellationToken> ct)
+        where TWaveIn : IWaveIn, new()
+        where TWaveOut : IWavePlayer, new()
+    {
+        var pipe = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
+
+        using (var streamIn = pipe.Writer.AsStream())
+        {
+            await Record<TWaveIn>(streamIn, ct.First());
+        }
+
+        using var streamOut = pipe.Reader.AsStream();
+        await Play<TWaveOut>(new StreamWaveProvider(GetRecorderWaveFormat<TWaveIn>(), streamOut), ct.Skip(1).First());
+    }
+
+    public static WaveFormat GetRecorderWaveFormat<TWaveIn>()
+        where TWaveIn : IWaveIn, new()
+    {
+        using var recorder = new TWaveIn();
+        return recorder.WaveFormat;
+    }
+
+    public static WaveFormat GetPlayerWaveFormat<TWaveOut>()
         where TWaveOut : IWavePlayer, new()
     {
         using var player = new TWaveOut();

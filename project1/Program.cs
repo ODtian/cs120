@@ -2,9 +2,6 @@
 using NAudio.Wave;
 using System.CommandLine;
 using System.CommandLine.Parsing;
-using System.Text;
-using MathNet.Numerics.Data.Matlab;
-using MathNet.Numerics.LinearAlgebra;
 using CS120.Symbol;
 using CS120.Preamble;
 using CS120.TxRx;
@@ -13,8 +10,9 @@ using CS120.Packet;
 using System.IO.Pipelines;
 using CS120.Utils;
 using System.Buffers;
-// using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using CS120.Phy;
+using System.Text;
 
 namespace CS120;
 
@@ -26,7 +24,8 @@ class Program
     public static DPSKSymbolOption option =
         new() { NumSymbols = 2, NumRedundant = 1, SampleRate = 48000, Freq = 6_000 };
 
-    public static ChirpSymbolOption chirpOption = new() {
+    public static ChirpSymbolOption chirpOption = new()
+    {
         NumSymbols = 2,
         Duration = 0.005f, // Read config or something
         SampleRate = 48_000,
@@ -42,18 +41,18 @@ class Program
     public static int dataNum = 32;
 
     public const int magicNum = 1;
-    public const int idNum = 2;
-    public const int lengthNum = 2;
+    public static readonly int idNum = BinaryIntegerSizeTrait<byte>.Size;
+    public static readonly int lengthNum = BinaryIntegerSizeTrait<byte>.Size;
     public static int dataLengthInByte = dataNum + eccNums + magicNum + lengthNum + idNum;
     // public static int dataLengthInBit = (2 + 60 + 40) * 8;
 
-    static Receiver InitReceiver<TWaveIn>(WaveFormat waveFormat, PipeReader pipe)
+    static ReceiverPhy InitReceiver<TWaveIn>(WaveFormat waveFormat, PipeReader pipe)
         where TWaveIn : IWaveIn, new()
     {
         // pipe = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
 
         // var rec = audioManager.Record<TWaveIn>(pipe.Writer.AsStream(), CancellationToken.None);
-        var receiver = new Receiver(
+        var receiver = new ReceiverPhy(
             // receivedFormat,
             // new StreamWaveProvider(receivedFormat, pipe.Reader.AsStream()).ToSampleProvider().ToMono(),
             new PreambleDetection(
@@ -82,10 +81,10 @@ class Program
         return receiver;
     }
 
-    static Transmitter InitTransmitter<TWaveOut>(WaveFormat waveFormat, PipeWriter pipe)
+    static TransmitterPhy InitTransmitter<TWaveOut>(WaveFormat waveFormat, PipeWriter pipe)
         where TWaveOut : IWavePlayer, new()
     {
-        var transmitter = new Transmitter(
+        var transmitter = new TransmitterPhy(
             waveFormat,
             pipe,
             new ChirpPreamble(chirpOption with { SampleRate = waveFormat.SampleRate }),
@@ -103,7 +102,7 @@ class Program
             // ),
             // sendFormat.ConvertLatencyToByteSize
             0
-            // sendFormat.ConvertLatencyToByteSize(1)
+        // sendFormat.ConvertLatencyToByteSize(1)
         );
         return transmitter;
     }
@@ -134,12 +133,12 @@ class Program
     {
         var command = new Command("audio", "play with audio stuff");
 
-        var playOption = new Option < FileInfo ? > (name: "--play",
+        var playOption = new Option<FileInfo?>(name: "--play",
                                                     description: "The file path to play",
                                                     isDefault: true,
                                                     parseArgument: result => ParseSingleFileInfo(result));
 
-        var recordOption = new Option < FileInfo ? > (name: "--record",
+        var recordOption = new Option<FileInfo?>(name: "--record",
                                                       description: "The file path to record",
                                                       isDefault: true,
                                                       parseArgument: result => ParseSingleFileInfo(result, false));
@@ -165,7 +164,7 @@ class Program
         command.SetHandler(
             async (FileInfo? play, FileInfo? record, bool recordPlayBack, int duration) =>
             {
-            await AudioCommandTask(play, record, recordPlayBack, duration, audioManager);
+                await AudioCommandTask(play, record, recordPlayBack, duration, audioManager);
             },
          playOption, recordOption, recordPlayBackOption, durationOption
         );
@@ -176,10 +175,10 @@ class Program
     {
         var command = new Command("send", "send data");
 
-        var fileArgument = new Argument < FileInfo
-            ? > (name: "input", description: "The file path to save", parse: result => ParseSingleFileInfo(result));
+        var fileArgument = new Argument<FileInfo
+            ?>(name: "input", description: "The file path to save", parse: result => ParseSingleFileInfo(result));
 
-        var toWavOption = new Option < FileInfo ? > (name: "--to-wav",
+        var toWavOption = new Option<FileInfo?>(name: "--to-wav",
                                                      description: "Export audio data to wav file",
                                                      isDefault: true,
                                                      parseArgument: result => ParseSingleFileInfo(result, false));
@@ -206,12 +205,12 @@ class Program
     {
         var command = new Command("receive", "receive data");
 
-        var fileOption = new Option < FileInfo ? > (name: "--file",
+        var fileOption = new Option<FileInfo?>(name: "--file",
                                                     description: "The file path to save, otherwise stdout",
                                                     isDefault: true,
                                                     parseArgument: result => ParseSingleFileInfo(result, false));
 
-        var fromWavOption = new Option < FileInfo ? > (name: "--from-wav",
+        var fromWavOption = new Option<FileInfo?>(name: "--from-wav",
                                                        description: "Import audio data from wav file",
                                                        isDefault: true,
                                                        parseArgument: result => ParseSingleFileInfo(result));
@@ -236,9 +235,7 @@ class Program
     static FileInfo? ParseSingleFileInfo(ArgumentResult result, bool checkExist = true)
     {
         if (result.Tokens.Count == 0)
-        {
             return null;
-        }
         string? filePath = result.Tokens.Single().Value;
         if (checkExist && !File.Exists(filePath))
         {
@@ -246,9 +243,7 @@ class Program
             return null;
         }
         else
-        {
             return new FileInfo(filePath);
-        }
     }
 
     static async Task
@@ -258,12 +253,14 @@ class Program
         using var cancelToken = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource(duration));
         using var cancelToken1 = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource(), false);
 
-        var taskPlay = play switch {
+        var taskPlay = play switch
+        {
             FileInfo => manager.Play<WasapiOut>(play.FullName, cancelToken.Source.Token),
             null => Task.CompletedTask,
         };
 
-        var taskRecord = (record, recordPlayBack) switch {
+        var taskRecord = (record, recordPlayBack) switch
+        {
             (_, true) => manager.RecordThenPlay<WasapiCapture, WasapiOut>(new[] { cancelToken, cancelToken1 }.Select(
                 cts =>
                 {
@@ -328,7 +325,8 @@ class Program
             WaveFormat.CreateIeeeFloatWaveFormat(waveFormat.SampleRate, 1), pipe.Reader
         );
 
-        var play = toWav switch {
+        var play = toWav switch
+        {
             null => audioManager.Play<WasapiOut>(provider, cts.Source.Token),
             FileInfo => Task.Run(
                 () =>
@@ -365,9 +363,7 @@ class Program
                         dataPipe.Writer.Write(DataHelper.Convert01ToBytes(txt));
                     }
                     else
-                    {
                         file.OpenRead().CopyTo(dataPipe.Writer.AsStream());
-                    }
                     dataPipe.Writer.Complete();
                 }
             }
@@ -387,8 +383,8 @@ class Program
                 // {
                 //     Console.WriteLine(Convert.ToString(d, 2).PadLeft(8, '0'));
                 // }
-                await transmitter.Packets.WriteAsync(
-                    dataArray.IDEncode(index++).LengthEncode(dataNum + idNum).RSEncode(eccNums), cts.Source.Token
+                await transmitter.Tx.WriteAsync(
+                    dataArray.IDEncode<byte>(index++).LengthEncode<byte>(dataNum + idNum).RSEncode(eccNums), cts.Source.Token
                 );
             }
 
@@ -398,7 +394,7 @@ class Program
                 break;
         }
 
-        transmitter.Packets.Complete();
+        transmitter.Tx.Complete();
 
         await exec;
         await play;
@@ -434,25 +430,19 @@ class Program
 
         // var index = 0;
         using var stream = file switch { null => Console.OpenStandardOutput(), FileInfo => file.OpenWrite() };
-        await foreach (var packet in receiver.Packets.ReadAllAsync(cts.Source.Token))
+        await foreach (var packet in receiver.Rx.ReadAllAsync(cts.Source.Token))
         {
-            var p = packet.RSDecode(eccNums, out var eccValid).LengthDecode(out var lengthValid).IDDecode(out var id);
+            var p = packet.RSDecode(eccNums, out var eccValid).LengthDecode<byte>(out var lengthValid).IDDecode<byte>(out var id);
 
             Console.WriteLine(
                 $"Receive a packet: Length {p.Length}, eccValid: {eccValid}, lengthValid: {lengthValid}, {id}"
             );
 
             if (binaryTxt)
-            {
                 foreach (var b in p)
-                {
-                    stream.Write(MemoryMarshal.Cast<char, byte>(Convert.ToString(b, 2).PadLeft(8, '0').AsSpan()));
-                }
-            }
+                    stream.Write(Encoding.ASCII.GetBytes(Convert.ToString(b, 2).PadLeft(8, '0')));
             else
-            {
                 stream.Write(p);
-            }
         }
         await exec;
         await rec;
