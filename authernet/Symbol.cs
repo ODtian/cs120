@@ -1,3 +1,4 @@
+using System.Numerics;
 using NWaves.Signals;
 using NWaves.Signals.Builders;
 
@@ -15,9 +16,9 @@ namespace CS120.Symbol;
 //     float[][] Symbols { get; }
 //     // public static abstract float[][] Get(TOption symbolOption);
 // }
-public interface ISymbol
+public interface ISymbol<T> where T : INumber<T>
 {
-    ReadOnlyMemory<ReadOnlyMemory<float>> Samples { get; }
+    ReadOnlyMemory<ReadOnlyMemory<T>> Samples { get; }
     // public static abstract float[][] Get(TOption symbolOption);
 }
 
@@ -27,15 +28,15 @@ public readonly record struct ChirpSymbolOption
     public int NumSamplesPerSymbol => (int)(Duration * SampleRate);
 }
 
-public readonly struct ChirpSymbol : ISymbol
+public readonly struct ChirpSymbol<T> : ISymbol<T> where T : INumber<T>
 {
-    public ReadOnlyMemory<ReadOnlyMemory<float>> Samples { get; }
+    public ReadOnlyMemory<ReadOnlyMemory<T>> Samples { get; }
     public ChirpSymbolOption Option { get; }
     public ChirpSymbol(ChirpSymbolOption symbolOption)
     {
         Option = symbolOption;
 
-        var result = new ReadOnlyMemory<float>[Option.NumSymbols];
+        var result = new ReadOnlyMemory<T>[Option.NumSymbols];
         var builder = new ChirpBuilder();
 
         var sig = builder.SetParameter("low", -1f)
@@ -46,13 +47,13 @@ public readonly struct ChirpSymbol : ISymbol
                       .OfLength(Option.NumSamplesPerSymbol)
                       .Build();
 
-        result[0] = sig.Samples;
-        result[1] = (sig * -1).Samples.Reverse().ToArray();
+        result[0] = sig.Samples.Select(x => T.CreateChecked(x)).ToArray();
+        result[1] = (sig * -1).Samples.Reverse().Select(x => T.CreateChecked(x)).ToArray();
 
         Samples = result;
     }
 
-    public static implicit operator ChirpSymbol(ChirpSymbolOption option) => new(option);
+    public static implicit operator ChirpSymbol<T>(ChirpSymbolOption option) => new(option);
 }
 
 public readonly record struct DPSKSymbolOption
@@ -61,15 +62,15 @@ public readonly record struct DPSKSymbolOption
     public int NumSamplesPerSymbol => (int)(SampleRate / Freq * NumRedundant);
 }
 
-public readonly struct DPSKSymbol : ISymbol
+public readonly struct DPSKSymbol<T> : ISymbol<T> where T : INumber<T>
 {
-    public ReadOnlyMemory<ReadOnlyMemory<float>> Samples { get; }
+    public ReadOnlyMemory<ReadOnlyMemory<T>> Samples { get; }
 
     public DPSKSymbolOption Option { get; }
     public DPSKSymbol(DPSKSymbolOption symbolOption)
     {
         Option = symbolOption;
-        var result = new ReadOnlyMemory<float>[Option.NumSymbols];
+        var result = new ReadOnlyMemory<T>[Option.NumSymbols];
 
         // for (int i = 0; i < symbolOption.NumSymbols; i++)
         var sig = new SineBuilder()
@@ -80,12 +81,12 @@ public readonly struct DPSKSymbol : ISymbol
                       .OfLength(Option.NumSamplesPerSymbol)
                       .Build();
 
-        result[0] = sig.Samples;
+        result[0] = sig.Samples.Select(x => T.CreateChecked(x)).ToArray();
 
-        result[1] = (sig * -1).Samples;
+        result[1] = (sig * -1).Samples.Select(x => T.CreateChecked(x)).ToArray();
 
         Samples = result;
     }
 
-    public static implicit operator DPSKSymbol(DPSKSymbolOption option) => new(option);
+    public static implicit operator DPSKSymbol<T>(DPSKSymbolOption option) => new(option);
 }

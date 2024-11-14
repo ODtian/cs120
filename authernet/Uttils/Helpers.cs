@@ -7,6 +7,7 @@ using MathNet.Numerics.Data.Matlab;
 using MathNet.Numerics.LinearAlgebra;
 using NAudio.Wave;
 using System.CommandLine.Parsing;
+using System.Numerics;
 
 namespace CS120.Utils.Helpers;
 public static partial class FileHelper
@@ -81,19 +82,18 @@ public static partial class FileHelper
 
 public static class ModulateHelper
 {
-    public static byte DotProductDemodulateByte(ReadOnlySpan<float> samples, ReadOnlySpan<float> symbol)
+    public static byte DotProductDemodulateByte<T>(ReadOnlySpan<T> samples, ReadOnlySpan<T> symbol) where T : INumber<T>
     {
         byte result = 0;
-        for (byte i = 0; i < 8; i++)
+        for (int i = 0; i < 8; i++)
         {
-
-            var energy = 0f;
+            var energy = T.Zero;
             for (int j = 0; j < symbol.Length; j++)
             {
                 energy += samples[j + i * symbol.Length] * symbol[j];
             }
 
-            result |= energy < 0f ? (byte)(1 << i) : (byte)0;
+            result |= energy < T.Zero ? (byte)(1 << i) : (byte)0;
         }
 
         return result;
@@ -131,7 +131,7 @@ public static class DataHelper
     public static byte[] GenerateData(int length)
     {
         var random = new Random();
-        var data = new List<byte> {};
+        var data = new List<byte> { };
 
         while (data.Count * 8 < length)
         {
@@ -141,7 +141,7 @@ public static class DataHelper
         int bitsToKeep = length - (data.Count - 1) * 8;
         data[^1] &= (byte)((1 << bitsToKeep) - 1);
 
-        return [..data];
+        return [.. data];
     }
 
     public static byte[] GenerateDataByte(int length)
@@ -172,13 +172,13 @@ public static class DataHelper
             }
             // Console.WriteLine(data.Count);
         }
-        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, data.Count, [..data]);
+        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, data.Count, [.. data]);
         MatlabWriter.Write(matFile, matrix, "audio_rec");
     }
 
     public static void GenerateMatlabSendData(float[] samples, string matFile)
     {
-        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, samples.Length, [..samples]);
+        var matrix = Matrix<float>.Build.DenseOfRowMajor(1, samples.Length, [.. samples]);
         MatlabWriter.Write(matFile, matrix, "audio");
     }
 
