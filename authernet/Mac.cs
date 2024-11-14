@@ -96,7 +96,7 @@ public class MacDuplex
                     if (mac.SequenceNumber == expectedSeqNum)
                     {
                         await channelRx.Writer.WriteAsync(packet, ct);
-                        expectedSeqNum++;
+                        expectedSeqNum = (expectedSeqNum + 1) % 64;
                     }
                     await writer.WriteAsync(
                         Array.Empty<byte>().MacEncode(new() { Source = mac.Dest, Dest = mac.Source, Type = MacFrame.FrameType.Ack, SequenceNumber = mac.SequenceNumber }),
@@ -108,7 +108,7 @@ public class MacDuplex
                     if (sent.ContainsKey(mac.SequenceNumber))
                     {
                         sent.Remove(mac.SequenceNumber);
-                        sendBase++;
+                        sendBase = (sendBase + 1) % 64;
                     }
                 }
 
@@ -131,7 +131,7 @@ public class MacDuplex
         // await foreach (var packet in channelTx.Reader.ReadAllAsync(ct)) await writer.WriteAsync(packet, ct);
         await foreach (var packet in channelTx.Reader.ReadAllAsync(ct))
         {
-            while ((nextSeqNum + 1) == sendBase)
+            while ((nextSeqNum + 1) % 64 == sendBase)
             {
                 await Task.Delay(100, ct);
             }
@@ -140,7 +140,7 @@ public class MacDuplex
             var macPacket = packet.MacEncode(mac);
             sent[nextSeqNum] = macPacket;
             await writer.WriteAsync(macPacket, ct);
-            nextSeqNum++;
+            nextSeqNum = (nextSeqNum + 1) % 64;
         }
     }
 }
