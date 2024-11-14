@@ -29,7 +29,8 @@ class Program
     public static DPSKSymbolOption option =
         new() { NumSymbols = 2, NumRedundant = 1, SampleRate = 48000, Freq = 6_000 };
 
-    public static ChirpSymbolOption chirpOption = new() {
+    public static ChirpSymbolOption chirpOption = new()
+    {
         NumSymbols = 2,
         Duration = 0.005f, // Read config or something
         SampleRate = 48_000,

@@ -21,12 +21,14 @@ public static class CommandTask
         using var cancelToken = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource(duration));
         using var cancelToken1 = new CancelKeyPressCancellationTokenSource(new CancellationTokenSource(), false);
 
-        var taskPlay = play switch {
+        var taskPlay = play switch
+        {
             FileInfo => Audio.Play<WasapiOut>(play.FullName, cancelToken.Source.Token),
             null => Task.CompletedTask,
         };
 
-        var taskRecord = (record, recordPlayBack) switch {
+        var taskRecord = (record, recordPlayBack) switch
+        {
             (_, true) => Audio.RecordThenPlay<WasapiCapture, WasapiOut>(new[] { cancelToken, cancelToken1 }.Select(
                 cts =>
                 {
@@ -59,7 +61,8 @@ public static class CommandTask
             WaveFormat.CreateIeeeFloatWaveFormat(waveFormat.SampleRate, 1), pipe.Reader
         );
 
-        var play = toWav switch {
+        var play = toWav switch
+        {
             null => Audio.Play<WasapiOut>(provider, cts.Source.Token),
             FileInfo => Task.Run(
                 () =>
@@ -88,7 +91,7 @@ public static class CommandTask
             // ),
             // sendFormat.ConvertLatencyToByteSize
             0
-            // sendFormat.ConvertLatencyToByteSize(1)
+        // sendFormat.ConvertLatencyToByteSize(1)
         );
 
         var exec = transmitter.Execute(cts.Source.Token);
@@ -207,13 +210,19 @@ public static class CommandTask
         var pipePlay = new Pipe(new PipeOptions(pauseWriterThreshold: 0));
 
         var player =
-            render switch { null => new MMDeviceEnumerator().GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia),
-                            _ => Audio.GetWASAPIDevice(render, DataFlow.Render) };
+            render switch
+            {
+                null => new MMDeviceEnumerator().GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia),
+                _ => Audio.GetWASAPIDevice(render, DataFlow.Render)
+            };
 
         var recorder =
-            capture switch { null =>
+            capture switch
+            {
+                null =>
                                  new MMDeviceEnumerator().GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia),
-                             _ => Audio.GetWASAPIDevice(capture, DataFlow.Capture) };
+                _ => Audio.GetWASAPIDevice(capture, DataFlow.Capture)
+            };
 
         var wasapiIn = new WasapiCapture(recorder, true, 20);
 
@@ -225,6 +234,9 @@ public static class CommandTask
         wasapiOut.Init(new NonBlockingPipeWaveProvider(
             WaveFormat.CreateIeeeFloatWaveFormat(wasapiOut.OutputWaveFormat.SampleRate, 1), pipePlay.Reader
         ));
+
+        Console.WriteLine(wasapiOut.OutputWaveFormat.SampleRate);
+        Console.WriteLine(wasapiIn.WaveFormat.SampleRate);
 
         var rec = Audio.Record(wasapiIn, cts.Source.Token);
         var play = Audio.Play(wasapiOut, cts.Source.Token);
@@ -268,7 +280,7 @@ public static class CommandTask
             ),
             256,
             128,
-            0.5f
+            0.3f
         );
 
         using var util = new PhyUtilDuplex(csma.Tx, csma.Rx);
@@ -312,13 +324,13 @@ public static class CommandBuilder
     {
         var command = new Command("audio", "play with audio stuff");
 
-        var playOption = new Option < FileInfo ? > (name: "--play",
+        var playOption = new Option<FileInfo?>(name: "--play",
                                                     description: "The file path to play",
                                                     isDefault: true,
                                                     parseArgument: result => FileHelper.ParseSingleFileInfo(result));
 
         var recordOption =
-            new Option < FileInfo ? > (name: "--record",
+            new Option<FileInfo?>(name: "--record",
                                        description: "The file path to record",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, false));
@@ -351,12 +363,12 @@ public static class CommandBuilder
     {
         var command = new Command("send", "send data");
 
-        var fileArgument = new Argument < FileInfo ? > (name: "input",
+        var fileArgument = new Argument<FileInfo?>(name: "input",
                                                         description: "The file path to save",
                                                         parse: result => FileHelper.ParseSingleFileInfo(result));
 
         var toWavOption =
-            new Option < FileInfo ? > (name: "--to-wav",
+            new Option<FileInfo?>(name: "--to-wav",
                                        description: "Export audio data to wav file",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, false));
@@ -378,12 +390,12 @@ public static class CommandBuilder
         var command = new Command("receive", "receive data");
 
         var fileOption =
-            new Option < FileInfo ? > (name: "--file",
+            new Option<FileInfo?>(name: "--file",
                                        description: "The file path to save, otherwise stdout",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, false));
 
-        var fromWavOption = new Option < FileInfo ? > (name: "--from-wav",
+        var fromWavOption = new Option<FileInfo?>(name: "--from-wav",
                                                        description: "Import audio data from wav file",
                                                        isDefault: true,
                                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result));
@@ -411,13 +423,13 @@ public static class CommandBuilder
             new Argument<byte>(name: "dest", description: "The mac address to send", getDefaultValue: () => 1);
 
         var fileSendOption =
-            new Option < FileInfo ? > (name: "--file-send",
+            new Option<FileInfo?>(name: "--file-send",
                                        description: "The file path to send data",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, true));
 
         var fileReceiveOption =
-            new Option < FileInfo ? > (name: "--file-receive",
+            new Option<FileInfo?>(name: "--file-receive",
                                        description: "The file path to save received data, otherwise stdout",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, false));
@@ -429,9 +441,9 @@ public static class CommandBuilder
         var sleepOption =
             new Option<float>(name: "--sleep", description: "time to sleep to send data", getDefaultValue: () => 1f);
 
-        var txOption = new Option < string ? > (name: "--render", description: "Name of rendering device to use");
+        var txOption = new Option<string?>(name: "--render", description: "Name of rendering device to use");
 
-        var rxOption = new Option < string ? > (name: "--capture", description: "Name of capturing device to use");
+        var rxOption = new Option<string?>(name: "--capture", description: "Name of capturing device to use");
 
         command.AddArgument(addressSourceArgument);
         command.AddArgument(addressDestArgument);
