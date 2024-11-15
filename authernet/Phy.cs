@@ -172,6 +172,7 @@ public class CSMAPhyHalfDuplex
 {
     public enum CSMAState
     {
+        Idle,
         CarrierSense,
         FrameDetect,
         Send,
@@ -179,6 +180,9 @@ public class CSMAPhyHalfDuplex
     }
 
     private Task delay = Task.CompletedTask;
+    // private System.Timers.Timer timer = new System.Timers.Timer() { AutoReset = false };
+    // private bool backOffSet = false;
+    // private Timer timer = new Timer((s) => backOffSet = false);
 
     // private readonly PipeWriter pipeWriter = pipeWriter;
     // private readonly PipeReader pipeReader = pipeReader;
@@ -203,12 +207,13 @@ public class CSMAPhyHalfDuplex
 
     private async Task Start(CancellationToken ct)
     {
-        CSMAState state = CSMAState.CarrierSense;
+        CSMAState state = CSMAState.Idle;
         try
         {
             while (true)
             {
-                state = state switch { CSMAState.CarrierSense => await CarrierSense(ct),
+                state = state switch { CSMAState.Idle => await Idle(ct),
+                                       CSMAState.CarrierSense => await CarrierSense(ct),
                                        CSMAState.FrameDetect => await FrameDetect(ct),
                                        CSMAState.Send => await Send(ct),
                                        _ => state };
@@ -228,20 +233,45 @@ public class CSMAPhyHalfDuplex
             channelRx.Writer.TryComplete(e);
         }
     }
-    private ValueTask<CSMAState> CarrierSense(CancellationToken ct)
-    {
-        while (carrierSensor.TryAdvance())
-        {
-            ct.ThrowIfCancellationRequested();
-            if (channelTx.Reader.Count > 0 && delay.IsCompleted)
-                return ValueTask.FromResult(CSMAState.Send);
-        }
 
-        /* Collision! */
-        if (channelTx.Reader.Count > 0)
-            delay = Task.Delay(baseBackOffTime, ct);
+    private ValueTask<CSMAState> Idle(CancellationToken ct)
+    {
+        if (channelTx.Reader.Count > 0 && delay.IsCompleted)
+            return ValueTask.FromResult(CSMAState.CarrierSense);
 
         return ValueTask.FromResult(CSMAState.FrameDetect);
+    }
+    private ValueTask<CSMAState> CarrierSense(CancellationToken ct)
+    {
+        if (carrierSensor.TryAdvance())
+        {
+            // Console.WriteLine("No Collision!");
+            return ValueTask.FromResult(CSMAState.Send);
+        }
+        else
+        {
+            // Console.WriteLine("Collision!");
+            delay = Task.Delay(baseBackOffTime * new Random().Next(1, 2), ct);
+            // delay = Task.Run(async () => await Task.Delay(baseBackOffTime * new Random().Next(2, 3), ct), ct);
+            return ValueTask.FromResult(CSMAState.FrameDetect);
+        }
+        // while (carrierSensor.TryAdvance())
+        // {
+        //     ct.ThrowIfCancellationRequested();
+        //     if (channelTx.Reader.Count > 0 && delay.IsCompleted)
+        //         return ValueTask.FromResult(CSMAState.Send);
+        // }
+
+        // /* Collision! */
+        // if (channelTx.Reader.Count > 0)
+        // {
+        //     Console.WriteLine("Collision!");
+        //     delay = Task.Run(async () => await Task.Delay(baseBackOffTime * new Random().Next(1, 10), ct), ct);
+        //     // .Change(baseBackOffTime, Timeout.InfiniteTimeSpan);
+        // }
+        // // delay = Task.Delay(baseBackOffTime, ct);
+
+        // return ValueTask.FromResult(CSMAState.FrameDetect);
     }
 
     private async ValueTask<CSMAState> FrameDetect(CancellationToken ct)
@@ -249,7 +279,8 @@ public class CSMAPhyHalfDuplex
 
         if (preambleDetection.TryAdvance())
         {
-            return CSMAState.CarrierSense;
+            // return CSMAState.CarrierSense;
+            return CSMAState.Idle;
         }
 
         if (!TryGetLength(out var packetLength))
@@ -261,20 +292,26 @@ public class CSMAPhyHalfDuplex
 
         await channelRx.Writer.WriteAsync(packet, ct);
 
-        return CSMAState.CarrierSense;
+        return CSMAState.Idle;
     }
 
     private async ValueTask<CSMAState> Send(CancellationToken ct)
     {
         var packet = await channelTx.Reader.ReadAsync(ct);
+        var s = preamble.Samples.Span.AsBytes();
+        var count = s.Length;
+        pipeWriter.Write(s);
+        count += modulator.Write(packet);
+        // pipeWriter.Write(quietBuffer);
 
-        pipeWriter.Write(preamble.Samples.Span.AsBytes());
-        modulator.Write(packet);
-        pipeWriter.Write(quietBuffer);
-
-        await pipeWriter.FlushAsync(ct).ConfigureAwait(false);
-
-        return CSMAState.CarrierSense;
+        await pipeWriter.FlushAsync(ct);
+        // var res = await pipeReader.ReadAsync(ct);
+        // Console.WriteLine(res.Buffer.Length);
+        // Console.WriteLine("Send");
+        // pipeReader.AdvanceTo(res.Buffer.GetPosition(Math.Min(res.Buffer.Length, count)));
+        // await Task.Delay(30);
+        // delay = Task.Delay(20);
+        return CSMAState.Idle;
     }
 
     protected virtual bool TryGetLength(out int length)
@@ -344,12 +381,20 @@ class PhyUtilDuplex
                 continue;
 
             p = p.RSDecode(Program.eccNums, out var eccValid);
-
-            Console.WriteLine($"EccValid: {eccValid}");
+            // Console.WriteLine($"EccValid: {eccValid}");
+            // if (!eccValid)
+            // {
+            //     p.MacGet(out var mac);
+            //     Console.WriteLine($"Mac: {mac.Source} {mac.Dest} {mac.Type} {mac.SequenceNumber}");
+            // }
+            // for (int i = 0; i < p.Length; i++)
+            // {
+            //     Console.Write($"{p[i]:X2} ");
+            // }
+            // Console.WriteLine();
 
             if (!eccValid)
                 continue;
-
             // .LengthDecode<byte>(out var lengthValid)
             // .IDDecode<byte>(out var id);
             await channelRx.Writer.WriteAsync(p, ct);

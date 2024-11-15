@@ -39,7 +39,6 @@ public class PipeViewProvider : IWaveProvider, ISampleProvider
         }
 
         var result = Reader.ReadAtLeastAsync(count).AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
-
         if (result.IsFinished())
         {
             Reader.AdvanceTo(result.Buffer.Start);
@@ -70,7 +69,7 @@ public class PipeViewProvider : IWaveProvider, ISampleProvider
         {
             // Console.WriteLine(result.Buffer.Length);
             Reader.AdvanceTo(
-                result.Buffer.GetPosition(Math.Min(result.Buffer.Length, numSamples * WaveFormat.BitsPerSample / 8))
+                result.Buffer.GetPosition(Math.Min(result.Buffer.Length, numSamples * WaveFormat.BitsPerSample / 8 * WaveFormat.Channels))
             );
         }
     }

@@ -32,11 +32,13 @@ class Program
     public static ChirpSymbolOption chirpOption = new()
     {
         NumSymbols = 2,
-        Duration = 0.005f, // Read config or something
+        Duration = 0.001f, // Read config or something
         SampleRate = 48_000,
         FreqA = 3_000, // Read config or something
         FreqB = 10_000 // Read config or something
     };
+
+    public static LineSymbolOption lineOption = new() { NumSymbols = 2, NumSamplesPerSymbol = 4 };
 
     public static float corrThreshold = 0.4f;
     public static int maxPeakFalling = chirpOption.NumSamplesPerSymbol;

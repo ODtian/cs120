@@ -192,7 +192,7 @@ public class PreambleDetection : IPipeAdvance
             if (corr > corrThreshold && corr > localMaxCorr)
             {
                 // Debug.Assert(maxPeakFalling == 0);
-                Console.WriteLine($"corr {corr}");
+                // Console.WriteLine($"corr {corr}");
                 localMaxCorr = corr;
                 restNum = maxPeakFalling;
             }

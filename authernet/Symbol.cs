@@ -89,3 +89,27 @@ public readonly struct DPSKSymbol : ISymbol
 
     public static implicit operator DPSKSymbol(DPSKSymbolOption option) => new(option);
 }
+
+public readonly record struct LineSymbolOption
+(int NumSymbols, int NumSamplesPerSymbol)
+{
+}
+
+public readonly struct LineSymbol : ISymbol
+{
+    public ReadOnlyMemory<ReadOnlyMemory<float>> Samples { get; }
+    public LineSymbolOption Option { get; }
+    public LineSymbol(LineSymbolOption option)
+    {
+        Option = option;
+
+        var result = new ReadOnlyMemory<float>[2];
+
+        result[0] = Enumerable.Repeat(1f, option.NumSamplesPerSymbol).ToArray();
+        result[1] = Enumerable.Repeat(-1f, option.NumSamplesPerSymbol).ToArray();
+
+        Samples = result;
+    }
+
+    public static implicit operator LineSymbol(LineSymbolOption option) => new(option);
+}

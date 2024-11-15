@@ -107,12 +107,20 @@ public static class Audio
         await Record<T>(fileWriter, ct);
     }
 
-    public static MMDevice GetWASAPIDevice(string deviceName, DataFlow dataFlow)
+    public static MMDevice GetWASAPIDeviceByName(string deviceName, DataFlow dataFlow)
     {
         return new MMDeviceEnumerator()
             .EnumerateAudioEndPoints(dataFlow, DeviceState.Active)
             .First(device => device.FriendlyName == deviceName);
     }
+
+    public static MMDevice GetWASAPIDeviceByID(string deviceID, DataFlow dataFlow)
+    {
+        return new MMDeviceEnumerator()
+            .EnumerateAudioEndPoints(dataFlow, DeviceState.Active)
+            .First(device => device.ID == deviceID);
+    }
+
     public static async Task RecordThenPlay<TWaveIn, TWaveOut>(IEnumerable<CancellationToken> ct)
         where TWaveIn : IWaveIn, new()
         where TWaveOut : IWavePlayer, new()

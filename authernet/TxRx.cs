@@ -46,6 +46,7 @@ public interface IDuplex : ITransmitter,
 public class DuplexBase
 () : IDuplex, IDisposable
 {
+    // protected readonly Channel<byte[]> channelTx = Channel.CreateBounded<byte[]>(1);
     protected readonly Channel<byte[]> channelTx = Channel.CreateUnbounded<byte[]>();
     protected readonly Channel<byte[]> channelRx = Channel.CreateUnbounded<byte[]>();
     public ChannelWriter<byte[]> Tx => channelTx.Writer;

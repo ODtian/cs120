@@ -59,7 +59,7 @@ public interface IPipeWriter<T>
 {
     PipeWriter SourceWriter { get; }
 
-    void Write(ReadOnlySpan<T> src);
+    int Write(ReadOnlySpan<T> src);
 
     ValueTask<FlushResult> FlushAsync(CancellationToken ct)
     {
