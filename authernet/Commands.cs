@@ -224,7 +224,9 @@ public static class CommandTask
 
         var wasapiOut = new WasapiOut(player, AudioClientShareMode.Exclusive, true, 10);
         var format = WaveFormat.CreateIeeeFloatWaveFormat(wasapiOut.OutputWaveFormat.SampleRate, 1);
-        var pipePlay = new Pipe(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: -1));
+        var pipePlay =
+            new Pipe(new PipeOptions(pauseWriterThreshold: 10 * format.SampleRate / 1000 * 4, resumeWriterThreshold: 0)
+            );
 
         wasapiOut.Init(new NonBlockingPipeWaveProvider(format, pipePlay.Reader));
 
@@ -274,7 +276,7 @@ public static class CommandTask
             new LineDemodulator(pipeRec.Reader, wasapiIn.WaveFormat, Program.lineOption),
             256,
             wasapiOut.OutputWaveFormat.ConvertLatencyToSampleSize(0.1f),
-            0.01f
+            0.04f
         );
 
         using var util = new PhyUtilDuplex(csma.Tx, csma.Rx);
@@ -307,10 +309,10 @@ public static class CommandTask
             // packet.MacDecode(out var x).IDGet<ushort>(out var id);
             packet.IDGet<ushort>(out var id);
             // Console.WriteLine($"Receive a packet: {x.Dest} {x.Type}");
-            if (id >> 8 == addressSource)
-            {
-                Console.WriteLine(id & 0x00ff);
-            }
+            // if (id >> 8 == addressSource)
+            // {
+            // }
+            Console.WriteLine($"to {id >> 8} get {id & 0x00ff}");
         }
         // Console.WriteLine("Done");
         await daemon;

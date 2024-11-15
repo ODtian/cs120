@@ -9,6 +9,7 @@ using CS120.Preamble;
 using CS120.TxRx;
 using CS120.Utils;
 using CS120.Utils.Extension;
+using CS120.Utils.Wave;
 using NAudio.Wave;
 
 namespace CS120.Phy;
@@ -199,7 +200,7 @@ public class CSMAPhyHalfDuplex
     // private readonly DemodulateLength demodulateLength;
     private readonly byte[] quietBuffer = new byte[waveFormatWrite.ConvertSamplesToByteSize(quietSamples)];
     private readonly TimeSpan baseBackOffTime = TimeSpan.FromSeconds(baseBackOffTime);
-
+    private bool isSent = false;
     public async Task Execute(CancellationToken ct)
     {
         await Task.Run(() => Start(ct), ct);
@@ -236,6 +237,9 @@ public class CSMAPhyHalfDuplex
 
     private ValueTask<CSMAState> Idle(CancellationToken ct)
     {
+        // if (delay.IsCompleted)
+        //     Console.WriteLine("n Delaying...");
+
         if (channelTx.Reader.Count > 0 && delay.IsCompleted)
             return ValueTask.FromResult(CSMAState.CarrierSense);
 
@@ -251,9 +255,12 @@ public class CSMAPhyHalfDuplex
         else
         {
             // Console.WriteLine("Collision!");
-            delay = Task.Delay(baseBackOffTime * new Random().Next(1, 2), ct);
-            // delay = Task.Run(async () => await Task.Delay(baseBackOffTime * new Random().Next(2, 3), ct), ct);
-            return ValueTask.FromResult(CSMAState.FrameDetect);
+            // delay = Task.Delay(100, ct);
+            // * new Random().Next(1, 2)
+            // Console.WriteLine("Collision!");
+            // delay = Task.Delay(baseBackOffTime * new Random().Next(1, 2), ct);
+            delay = Task.Run(async () => await Task.Delay(baseBackOffTime * new Random().Next(0, 7), ct), ct);
+            return ValueTask.FromResult(CSMAState.Idle);
         }
         // while (carrierSensor.TryAdvance())
         // {
@@ -305,10 +312,12 @@ public class CSMAPhyHalfDuplex
         // pipeWriter.Write(quietBuffer);
 
         await pipeWriter.FlushAsync(ct);
-        // var res = await pipeReader.ReadAsync(ct);
+        // Console.WriteLine($"{count / 4}");
+        // isSent = true;
+        // ReadResult res = await pipeReader.ReadAsync(ct);
         // Console.WriteLine(res.Buffer.Length);
-        // Console.WriteLine("Send");
-        // pipeReader.AdvanceTo(res.Buffer.GetPosition(Math.Min(res.Buffer.Length, count)));
+        // new PipeViewProvider(waveFormatRead, pipeReader).AdvanceSamples(count / 4);
+
         // await Task.Delay(30);
         // delay = Task.Delay(20);
         return CSMAState.Idle;
@@ -381,7 +390,7 @@ class PhyUtilDuplex
                 continue;
 
             p = p.RSDecode(Program.eccNums, out var eccValid);
-            // Console.WriteLine($"EccValid: {eccValid}");
+            Console.WriteLine($"EccValid: {eccValid}");
             // if (!eccValid)
             // {
             //     p.MacGet(out var mac);
