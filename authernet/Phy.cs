@@ -3,7 +3,6 @@ using System.IO.Pipelines;
 using System.Numerics;
 using System.Threading.Channels;
 using CommunityToolkit.HighPerformance;
-using CS120.Modulate;
 using CS120.Packet;
 using CS120.Preamble;
 using CS120.TxRx;
@@ -208,10 +207,13 @@ public class CSMAPhyHalfDuplex
         {
             while (true)
             {
-                state = state switch { CSMAState.CarrierSense => await CarrierSense(ct),
-                                       CSMAState.FrameDetect => await FrameDetect(ct),
-                                       CSMAState.Send => await Send(ct),
-                                       _ => state };
+                state = state switch
+                {
+                    CSMAState.CarrierSense => await CarrierSense(ct),
+                    CSMAState.FrameDetect => await FrameDetect(ct),
+                    CSMAState.Send => await Send(ct),
+                    _ => state
+                };
 
                 if (state is CSMAState.Quit)
                 {
@@ -315,7 +317,7 @@ public class CSMAPhyHalfDuplex<T>(
       )
     where T : IBinaryInteger<T>
 {
-    private readonly byte[] lengthBuffer = new byte[BinaryIntegerSizeTrait<T>.Size];
+    private readonly byte[] lengthBuffer = new byte[BinaryIntegerTrait<T>.Size];
     protected override bool TryGetLength(out int length)
     {
         var success = demodulator.TryReadTo(lengthBuffer, false);

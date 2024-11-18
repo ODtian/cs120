@@ -42,10 +42,11 @@ public class CancelKeyPressCancellationTokenSource : IDisposable
     }
 }
 
-public static class BinaryIntegerSizeTrait<T>
+public static class BinaryIntegerTrait<T>
     where T : IBinaryInteger<T>
 {
     public static readonly int Size = T.Zero.GetByteCount();
+    public static readonly T MaxValue = T.CreateChecked(1 << (Size * 8) - 1);
 }
 
 public interface IPipeReader<T>
