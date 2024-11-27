@@ -26,7 +26,7 @@ public static partial class FileHelper
             return new FileInfo(filePath);
     }
 
-    public static async IAsyncEnumerable<byte[]> ReadFileChunk(FileInfo file, int chunkSize, bool binaryTxt = false, [
+    public static async IAsyncEnumerable<byte[]> ReadFileChunkAsync(FileInfo file, int chunkSize, bool binaryTxt = false, [
         EnumeratorCancellation
     ] CancellationToken ct = default)
     {

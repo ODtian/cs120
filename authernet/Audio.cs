@@ -2,32 +2,40 @@ using System.IO.Pipelines;
 using CS120.Utils.Wave;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using NAudio.Wave.Asio;
 
 namespace CS120;
 
 public static class Audio
 {
-    public static string[] ListAsioDevices()
+    public static void ListAsioDevices()
     {
-        return AsioOut.GetDriverNames();
+        using var asio = new AsioOut();
+
+        Console.WriteLine("Render devices (Speakers):");
+        for (int i = 0; i < asio.DriverOutputChannelCount; i++)
+            Console.WriteLine($"\t{i} {asio.AsioInputChannelName(i)}");
+
+        Console.WriteLine("Capture devices (Recorder):");
+        for (int i = 0; i < asio.DriverInputChannelCount; i++)
+            Console.WriteLine($"\t{i} {asio.AsioInputChannelName(i)}");
     }
 
     public static void ListWASAPIDevices()
     {
-        var enumerator = new MMDeviceEnumerator();
+        using var enumerator = new MMDeviceEnumerator();
 
         Console.WriteLine("Render devices (Speakers):");
-        foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
-            Console.WriteLine($"\tFriendlyName: {device.FriendlyName, -40}, ID: {device.ID, -40}");
-
-        Console.WriteLine();
+        foreach (var (index, device) in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active).Index())
+            Console.WriteLine($"\t{index} ID: {device.ID} \tFriendlyName: {device.FriendlyName}");
 
         Console.WriteLine("Capture devices (Recorder):");
-        foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active))
-            Console.WriteLine($"\tFriendlyName: {device.FriendlyName, -40}, ID: {device.ID, -40}");
+        foreach (var (index, device) in enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active)
+                     .Index())
+            Console.WriteLine($"\t{index} ID: {device.ID} \tFriendlyName: {device.FriendlyName}");
     }
 
-    public static async Task Play<T>(T player, CancellationToken ct)
+    public static async Task PlayAsync<T>(T player, CancellationToken ct)
         where T : IWavePlayer
     {
         var tsc = new TaskCompletionSource();
@@ -49,22 +57,24 @@ public static class Audio
         }
     }
 
-    public static async Task Play<T>(IWaveProvider audioProvider, CancellationToken ct)
+    public static async Task PlayAsync<T>(IWaveProvider audioProvider, CancellationToken ct)
         where T : IWavePlayer, new()
     {
         using var player = new T();
         player.Init(audioProvider);
-        await Play(player, ct);
+        await PlayAsync(player, ct);
     }
 
-    public static async Task Play<T>(string audioFile, CancellationToken ct)
+    public static async Task PlayAsync<T>(string audioFile, CancellationToken ct)
         where T : IWavePlayer, new()
     {
         using var audio = new AudioFileReader(audioFile);
-        await Play<T>(audio, ct);
+        await PlayAsync<T>(audio, ct);
     }
 
-    public static async Task Record<T>(T recorder, CancellationToken ct)
+
+
+    public static async Task RecordAsync<T>(T recorder, CancellationToken ct)
         where T : IWaveIn
     {
         // recorder recorder.DataAvailable += (s, e) =>
@@ -92,28 +102,23 @@ public static class Audio
         }
     }
 
-    public static async Task Record<T>(Stream audioStream, CancellationToken ct)
+    public static async Task RecordAsync<T>(Stream audioStream, CancellationToken ct)
         where T : IWaveIn, new()
     {
         using var recorder = new T();
         recorder.DataAvailable += (s, e) => audioStream.Write(e.Buffer, 0, e.BytesRecorded);
-        await Record(recorder, ct);
+        await RecordAsync(recorder, ct);
     }
 
-    public static async Task Record<T>(string recordFile, CancellationToken ct)
+    public static async Task RecordAsync<T>(string recordFile, CancellationToken ct)
         where T : IWaveIn, new()
     {
         using var fileWriter = new WaveFileWriter(recordFile, GetRecorderWaveFormat<T>());
-        await Record<T>(fileWriter, ct);
+        await RecordAsync<T>(fileWriter, ct);
     }
 
-    public static MMDevice GetWASAPIDevice(string deviceName, DataFlow dataFlow)
-    {
-        return new MMDeviceEnumerator()
-            .EnumerateAudioEndPoints(dataFlow, DeviceState.Active)
-            .First(device => device.FriendlyName == deviceName);
-    }
-    public static async Task RecordThenPlay<TWaveIn, TWaveOut>(IEnumerable<CancellationToken> ct)
+
+    public static async Task RecordThenPlayAsync<TWaveIn, TWaveOut>(IEnumerable<CancellationToken> ct)
         where TWaveIn : IWaveIn, new()
         where TWaveOut : IWavePlayer, new()
     {
@@ -121,13 +126,55 @@ public static class Audio
 
         using (var streamIn = pipe.Writer.AsStream())
         {
-            await Record<TWaveIn>(streamIn, ct.First());
+            await RecordAsync<TWaveIn>(streamIn, ct.First());
         }
 
         using var streamOut = pipe.Reader.AsStream();
-        await Play<TWaveOut>(new StreamWaveProvider(GetRecorderWaveFormat<TWaveIn>(), streamOut), ct.Skip(1).First());
+        await PlayAsync<TWaveOut>(
+            new StreamWaveProvider(GetRecorderWaveFormat<TWaveIn>(), streamOut), ct.Skip(1).First()
+        );
     }
 
+    // public static async Task PlayAsync(AsioOut player, CancellationToken ct)
+    // {
+    //     var tsc = new TaskCompletionSource();
+    //     player.PlaybackStopped += (s, e) =>
+    //     {
+    //         if (e.Exception != null)
+    //             tsc.SetException(e.Exception);
+    //         else
+    //             tsc.SetResult();
+    //     };
+
+    //     player.Play();
+
+    //     var stopTask = Task.CompletedTask;
+    //     using (ct.Register(() => stopTask = Task.Run(player.Stop)))
+    //     {
+    //         await tsc.Task;
+    //         await stopTask;
+    //     }
+    // }
+
+    public static async Task ASIOPlayAsync(IWaveProvider waveProvider, CancellationToken ct)
+    {
+        using var player = new AsioOut() { };
+        player.Init(waveProvider);
+        await PlayAsync(player, ct);
+    }
+
+    public static async Task ASIOPlayAsync(string audioFile, CancellationToken ct)
+    {
+        using var audio = new AudioFileReader(audioFile);
+        await ASIOPlayAsync(audio, ct);
+    }
+
+
+    public static MMDevice GetWASAPIDevice(int index, DataFlow dataFlow)
+    {
+        using var enumerator = new MMDeviceEnumerator();
+        return enumerator.EnumerateAudioEndPoints(dataFlow, DeviceState.Active).ElementAt(index);
+    }
     public static WaveFormat GetRecorderWaveFormat<TWaveIn>()
         where TWaveIn : IWaveIn, new()
     {

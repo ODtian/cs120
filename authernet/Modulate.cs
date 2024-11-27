@@ -1,119 +1,106 @@
 using System.Buffers;
 using System.Numerics;
+using CS120.Preamble;
 using CS120.Symbol;
 using CS120.Utils;
+using CS120.Utils.Buffer;
 using CS120.Utils.Helpers;
 using CS120.Utils.Wave;
 
-namespace CS120.Modulate2;
+namespace CS120.Modulate;
 
 public interface ISequnceReader<TIn, TOut>
 {
     // bool TryReadTo(Span<T> dst, bool advandce = true);
-    bool TryRead(ref ReadOnlySequence<TIn> inSeq, out ReadOnlySequence<TOut> outSeq);
+    bool TryRead<T>(ref ReadOnlySequence<TIn> inSeq, T writer)
+        where T : IBufferWriter<TOut>;
 }
 
-// public abstract class Demodulator<T>(int maxByteLength) : ISequnceReader<T, byte>
-//     where T : unmanaged, INumber<T>
-// {
-//     protected int maxByteLength = maxByteLength;
-//     public bool TryRead(ref ReadOnlySequence<T> samples, out ReadOnlySequence<byte> data)
-//     {
-//         if (!TryGetLength(samples, out var length))
-//             goto done;
+public class Modulator<TPreamble, TSymbol>(TPreamble preamble, TSymbol symbol) : ISequnceReader<byte, float>
+        where TPreamble : IPreamble<float>
+        where TSymbol : ISymbol<float>
+{
+    public bool TryRead<T>(ref ReadOnlySequence<byte> inSeq, T writer)
+        where T : IBufferWriter<float>
+    {
+        writer.Write(preamble.Samples.Span);
+        // var result = new ChunkedSequence<float>();
 
-//         if (samples.Length < length)
-//             goto done;
+        // result.Append(preamble.Samples);
 
-//         var dataBuffer = new byte[length];
+        foreach (var seg in inSeq)
+        {
+            for (int i = 0; i < seg.Length; i++)
+            {
+                var data = seg.Span[i];
+                for (int j = 0; j < 8; j++)
+                {
+                    // result.Append(symbol.Samples.Span[data >> j & 1]);
+                    writer.Write(symbol.Samples.Span[data >> j & 1].Span);
+                }
+            }
+        }
+        // outSeq = result;
 
-//         if (TryRead(ref samples, dataBuffer))
-//         {
-//             data = new ReadOnlySequence<byte>(dataBuffer);
-//             return true;
-//         }
+        return true;
+    }
+}
 
-//     done:
-//         data = default;
-//         return false;
-//     }
-//     protected abstract bool TryRead(ref ReadOnlySequence<T> samples, Span<byte> data);
-//     protected virtual bool TryGetLength(ReadOnlySequence<T> samples, out int length)
-//     {
-//         length = maxByteLength;
-//         return true;
-//     }
-// }
+public class OFDMModulator<TPreamble, TSymbol>(TPreamble preamble, TSymbol[] symbols) : ISequnceReader<byte, float>
+    where TPreamble : IPreamble<float>
+    where TSymbol : ISymbol<float>
+{
+    private readonly int numSamplesPerSymbol = symbols[0].NumSamplesPerSymbol;
+    public bool TryRead<T>(ref ReadOnlySequence<byte> inSeq, T writer)
+        where T : IBufferWriter<float>
+    {
+        writer.Write(preamble.Samples.Span);
+        Span<float> buffer = stackalloc float[numSamplesPerSymbol * 8];
+        // Console.WriteLine(dataBuffer.Length);
+        // var symbolsBuffer = new ReadOnlyMemory<float>[8];
 
-// public class OFDMDemodulator<T>(DPSKSymbol<T>[] symbols, int maxByteLength)
-//     : Demodulator<T>(maxByteLength)
-//     where T : unmanaged, INumber<T>
-// {
-//     protected override sealed bool TryRead(ref ReadOnlySequence<T> samples, Span<byte> data)
-//     {
-//         var buffer = new T[symbols[0].Option.NumSamplesPerSymbol * 8];
-//         var length = data.Length;
+        Span<byte> dataBuffer = stackalloc byte[symbols.Length];
 
-//         if (samples.Length < length)
-//             return false;
-
-//         for (int i = 0; i < length; i += symbols.Length)
-//         {
-//             samples.TryReadOrCopy(out var buf, buffer);
-
-//             for (int j = 0; j < symbols.Length && i + j < length; j++)
-//             {
-//                 data[i + j] = ModulateHelper.DotProductDemodulateByte(buf, symbols[j].Samples.Span[0].Span);
-//             }
-//         }
-//         return true;
-//     }
-// }
-
-// public class OFDMDemodulator<TSample, TSize>(DPSKSymbol<TSample>[] symbols, int maxByteLength)
-//     : OFDMDemodulator<TSample>(symbols, maxByteLength)
-//     where TSample : unmanaged, INumber<TSample>
-//     where TSize : IBinaryInteger<TSize>
-
-// {
-//     protected override bool TryGetLength(ReadOnlySequence<TSample> samples, out int length)
-//     {
-//         Span<byte> buffer = stackalloc byte[BinaryIntegerSizeTrait<int>.Size];
-//         if (TryRead(ref samples, buffer))
-//         {
-//             length = Math.Min(int.CreateChecked(TSize.ReadLittleEndian(buffer, true)), maxByteLength);
-//             return true;
-//         }
-//         length = default;
-//         return false;
-//     }
-// }
-
-
-
+        while (inSeq.Length != 0)
+        {
+            var readed = inSeq.ConsumeExact(dataBuffer);
+            for (int i = 0; i < readed.Length; i++)
+            {
+                var data = readed[i];
+                for (int j = 0; j < 8; j++)
+                {
+                    var symbolSpan = symbols[i].Samples.Span[data >> j & 1].Span;
+                    for (int k = 0; k < numSamplesPerSymbol; k++)
+                        buffer[j * numSamplesPerSymbol + k] += symbolSpan[k];
+                }
+            }
+            writer.Write(buffer);
+            buffer.Clear();
+        }
+        return true;
+    }
+}
 
 public interface IDemodulator<TSample> : ISequnceReader<TSample, byte>
 {
     int MaxByteLength { get; }
-    override bool ISequnceReader<TSample, byte>.TryRead(ref ReadOnlySequence<TSample> samples, out
-    ReadOnlySequence<byte> data)
+    int SamplePerByte { get; }
+    bool ISequnceReader<TSample, byte>.TryRead<T>(ref ReadOnlySequence<TSample> samples, T writer)
     {
         if (!TryGetLength(samples, out var length))
-            goto done;
+            return false;
 
-        if (samples.Length < length)
-            goto done;
+        if (samples.Length < length * SamplePerByte)
+            return false;
 
-        var dataBuffer = new byte[length];
+        var buffer = writer.GetSpan(length)[..length];
 
-        if (TryRead(ref samples, dataBuffer))
+        if (TryRead(ref samples, buffer))
         {
-            data = new ReadOnlySequence<byte>(dataBuffer);
+            writer.Advance(length);
             return true;
         }
 
-    done:
-        data = default;
         return false;
     }
     bool TryRead(ref ReadOnlySequence<TSample> samples, Span<byte> data);
@@ -124,49 +111,91 @@ public interface IDemodulator<TSample> : ISequnceReader<TSample, byte>
     }
 }
 
-public interface IDemodulator<TSample, TSize> : IDemodulator<TSample> where TSize : unmanaged, IBinaryInteger<TSize>
+public interface IDemodulator<TSample, TSize> : IDemodulator<TSample>
+    where TSize : unmanaged, IBinaryInteger<TSize>
 {
     bool IDemodulator<TSample>.TryGetLength(ReadOnlySequence<TSample> samples, out int length)
     {
-        Span<byte> buffer = stackalloc byte[BinaryIntegerSizeTrait<int>.Size];
+        if (samples.Length < BinaryIntegerTrait<TSize>.Size * SamplePerByte)
+            goto done;
+
+        Span<byte> buffer = stackalloc byte[BinaryIntegerTrait<TSize>.Size];
         if (TryRead(ref samples, buffer))
         {
             length = Math.Min(int.CreateChecked(TSize.ReadLittleEndian(buffer, true)), MaxByteLength);
             return true;
         }
+    done:
         length = default;
         return false;
     }
 }
 
-public class OFDMDemodulator<TSample>(DPSKSymbol<TSample>[] symbols, int maxByteLength)
-    : IDemodulator<TSample>
+public class Demodulator<TSymbol, TSample>(TSymbol symbol, int maxByteLength) : IDemodulator<TSample>
+    where TSymbol : ISymbol<TSample>
     where TSample : unmanaged, INumber<TSample>
 {
     public int MaxByteLength { get; } = maxByteLength;
+    public int SamplePerByte { get; } = symbol.NumSamplesPerSymbol * 8;
     public bool TryRead(ref ReadOnlySequence<TSample> samples, Span<byte> data)
     {
-        var buffer = new TSample[symbols[0].Option.NumSamplesPerSymbol * 8];
         var length = data.Length;
 
-        if (samples.Length < length)
-            return false;
+        var buffer = ArrayPool<TSample>.Shared.Rent(SamplePerByte);
+        var span = buffer.AsSpan(0, SamplePerByte);
 
-        for (int i = 0; i < length; i += symbols.Length)
+        for (int i = 0; i < length; i++)
         {
-            samples.TryReadOrCopy(out var buf, buffer);
+            var readed = samples.ConsumeExact(span);
 
-            for (int j = 0; j < symbols.Length && i + j < length; j++)
-            {
-                data[i + j] = ModulateHelper.DotProductDemodulateByte(buf, symbols[j].Samples.Span[0].Span);
-            }
+            data[i] = ModulateHelper.DotProductDemodulateByte(readed, symbol.Samples.Span[0].Span);
         }
+
+        ArrayPool<TSample>.Shared.Return(buffer);
+
         return true;
     }
 }
 
-public class OFDMDemodulator<TSample, TSize>(DPSKSymbol<TSample>[] symbols, int maxByteLength)
-    : OFDMDemodulator<TSample>(symbols, maxByteLength), IDemodulator<TSample, TSize>
+public class Demodulator<TSymbol, TSample, TSize>(TSymbol symbol, int maxByteLength)
+    : Demodulator<TSymbol, TSample>(symbol, maxByteLength), IDemodulator<TSample, TSize>
+    where TSymbol : ISymbol<TSample>
+    where TSample : unmanaged, INumber<TSample>
+    where TSize : unmanaged, IBinaryInteger<TSize>
+{
+}
+
+public class OFDMDemodulator<TSymbol, TSample>(TSymbol[] symbols, int maxByteLength) : IDemodulator<TSample>
+    where TSymbol : ISymbol<TSample>
+    where TSample : unmanaged, INumber<TSample>
+{
+    public int MaxByteLength { get; } = maxByteLength;
+    public int SamplePerByte { get; } = symbols[0].NumSamplesPerSymbol * 8;
+    public bool TryRead(ref ReadOnlySequence<TSample> samples, Span<byte> data)
+    {
+        var length = data.Length;
+
+        var buffer = ArrayPool<TSample>.Shared.Rent(SamplePerByte);
+        var span = buffer.AsSpan(0, SamplePerByte);
+
+        for (int i = 0; i < length; i += symbols.Length)
+        {
+            var readed = samples.ConsumeExact(span);
+
+            for (int j = 0; j < symbols.Length && i + j < length; j++)
+            {
+                data[i + j] = ModulateHelper.DotProductDemodulateByte(readed, symbols[j].Samples.Span[0].Span);
+            }
+        }
+
+        ArrayPool<TSample>.Shared.Return(buffer);
+        return true;
+    }
+}
+
+public class OFDMDemodulator<TSymbol, TSample, TSize>(TSymbol[] symbols, int maxByteLength)
+    : OFDMDemodulator<TSymbol, TSample>(symbols, maxByteLength), IDemodulator<TSample, TSize>
+    where TSymbol : ISymbol<TSample>
     where TSample : unmanaged, INumber<TSample>
     where TSize : unmanaged, IBinaryInteger<TSize>
 {

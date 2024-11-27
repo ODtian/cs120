@@ -11,6 +11,10 @@ using CS120.Utils.Codec;
 using STH1123.ReedSolomon;
 using System.Text.Json;
 using CommunityToolkit.HighPerformance;
+using System.Threading.Channels;
+using Nerdbank.Streams;
+using NAudio.Wave.Asio;
+using DotNext;
 namespace CS120.Utils.Wave;
 
 public class StreamWaveProvider
@@ -318,7 +322,7 @@ public readonly struct PCM24WaveToSampleProvider<TSample>(PipeReader reader, Wav
             Span<Int24> shortBuffer = stackalloc Int24[1];
             do
             {
-                var currentSpan = resultBuffer.GetSpanOrCopyBitCast(remain, shortBuffer);
+                var currentSpan = resultBuffer.ConsumeCast(remain, shortBuffer);
                 if (currentSpan.Length == 0)
                     break;
                 for (int i = 0; i < currentSpan.Length; i++)
@@ -337,12 +341,12 @@ public readonly struct PCM24WaveToSampleProvider<TSample>(PipeReader reader, Wav
 
 public readonly struct PCMWaveToSampleProvider<TWave, TSample>(PipeReader reader, WaveFormat waveFormat)
     : IWaveReader<TSample>
-    where TWave : unmanaged, IBinaryInteger<TWave>, ISignedNumber<TWave>
+    where TWave : unmanaged, IBinaryInteger<TWave>, IMinMaxValue<TWave>
     where TSample : unmanaged, INumber<TSample>
 {
 
     public readonly WaveFormat WaveFormat { get; } = waveFormat;
-    public static readonly TSample PCMMaxValue = TSample.CreateChecked(BinaryIntegerTrait<TWave>.MaxValue);
+    public static readonly TSample PCMMaxValue = TSample.CreateChecked(TWave.MaxValue);
     public readonly int Length => (int)(reader.GetLength() / BinaryIntegerTrait<TWave>.Size);
     public readonly ReadOnlySpan<TSample> Read(Span<TSample> buffer)
     {
@@ -353,7 +357,7 @@ public readonly struct PCMWaveToSampleProvider<TWave, TSample>(PipeReader reader
             Span<TWave> shortBuffer = stackalloc TWave[1];
             do
             {
-                var currentSpan = resultBuffer.GetSpanOrCopyBitCast(remain, shortBuffer);
+                var currentSpan = resultBuffer.ConsumeCast(remain, shortBuffer);
                 if (currentSpan.Length == 0)
                     break;
                 for (int i = 0; i < currentSpan.Length; i++)
@@ -386,7 +390,7 @@ public readonly struct IEEEWaveToSampleProvider<TSample>(PipeReader reader, Wave
             Span<float> shortBuffer = stackalloc float[1];
             do
             {
-                var currentSpan = resultBuffer.GetSpanOrCopyBitCast(remain, shortBuffer);
+                var currentSpan = resultBuffer.ConsumeCast(remain, shortBuffer);
                 if (currentSpan.Length == 0)
                     break;
                 for (int i = 0; i < currentSpan.Length; i++)
@@ -415,17 +419,17 @@ public readonly struct MonoMixSampleReader<T>(IWaveReader<T> reader, WaveFormat 
 
     public ReadOnlySpan<T> Read(Span<T> buffer)
     {
-        Span<T> readBuffer = stackalloc T[channelCount];
+        var length = Math.Min(buffer.Length, Length);
+        var readBuffer = ArrayPool<T>.Shared.Rent(channelCount * length);
+        // Span<T> readBuffer = stackalloc T[channelCount];
         buffer.Clear();
 
+        var readed = reader.Read(readBuffer);
         for (int i = 0; i < buffer.Length; i++)
-        {
-            var readed = reader.Read(readBuffer);
-
             for (int j = 0; j < channelCount; j++)
-                buffer[i] += readed[i] * coffs[j];
-        }
+                buffer[i] += readed[i * channelCount + j] * coffs[j];
 
+        ArrayPool<T>.Shared.Return(readBuffer);
         return buffer;
     }
 }
@@ -442,14 +446,16 @@ public readonly struct MonoSelectSampleReader<T>(IWaveReader<T> reader, WaveForm
     public ReadOnlySpan<T> Read(Span<T> buffer)
     {
         var length = Math.Min(buffer.Length, Length);
-        Span<T> readBuffer = stackalloc T[channelCount];
+        var readBuffer = ArrayPool<T>.Shared.Rent(channelCount * length);
+        // Span<T> readBuffer = stackalloc T[channelCount];
         buffer.Clear();
 
+        var readed = reader.Read(readBuffer);
+
         for (int i = 0; i < buffer.Length; i++)
-        {
-            var readed = reader.Read(readBuffer);
-            buffer[i] = readed[index];
-        }
+            buffer[i] = readed[i * channelCount + index];
+
+        ArrayPool<T>.Shared.Return(readBuffer);
 
         return buffer;
     }
@@ -457,23 +463,23 @@ public readonly struct MonoSelectSampleReader<T>(IWaveReader<T> reader, WaveForm
 
 public static class WaveReaderExtension
 {
-    public static IWaveReader<T> ToMonoMix<T>(this IWaveReader<T> reader, WaveFormat waveFormat)
+    public static IWaveReader<T> ToMonoMix<T>(this IWaveReader<T> reader)
         where T : unmanaged, INumber<T>
     {
-        if (waveFormat.Channels == 1)
+        if (reader.WaveFormat.Channels == 1)
             return reader;
         return new MonoMixSampleReader<T>(
-            reader, CreateCustomWaveFormat(waveFormat.SampleRate, 1, waveFormat.BitsPerSample)
+            reader, CreateCustomWaveFormat(reader.WaveFormat.SampleRate, 1, reader.WaveFormat.BitsPerSample)
         );
     }
 
-    public static IWaveReader<T> ToMonoSelect<T>(this IWaveReader<T> reader, WaveFormat waveFormat, int index = 0)
+    public static IWaveReader<T> ToMonoSelect<T>(this IWaveReader<T> reader, int index = 0)
         where T : unmanaged, INumber<T>
     {
-        if (waveFormat.Channels == 1)
+        if (reader.WaveFormat.Channels == 1)
             return reader;
         return new MonoSelectSampleReader<T>(
-            reader, CreateCustomWaveFormat(waveFormat.SampleRate, 1, waveFormat.BitsPerSample), index
+            reader, CreateCustomWaveFormat(reader.WaveFormat.SampleRate, 1, reader.WaveFormat.BitsPerSample), index
         );
     }
 
@@ -516,37 +522,62 @@ public static class ReadOnlySequnceExtension
         }
         return 0;
     }
-    // Read as much struct in first span from byte seq as possible, if first span is not enough, copy to buffer
-    public static ReadOnlySpan<T> GetSpanOrCopyBitCast<T>(
-        this scoped ref ReadOnlySequence<byte> seq, int maxLength, Span<T> buffer
+    public static ReadOnlySpan<U> ConsumeCast<T, U>(
+        this scoped ref ReadOnlySequence<T> seq, int maxLength, Span<U> buffer
     )
         where T : unmanaged
+        where U : unmanaged
     {
-
-        var result = seq.FirstSpan.Cast<byte, T>()[..maxLength];
-
+        var result = seq.GetSpanCast(maxLength, buffer);
         if (result.Length == 0)
-        {
-            seq.CopyTo(buffer.Cast<T, byte>());
-            result = buffer;
-        }
+            return result;
 
-        seq = seq.Slice(result.Length * Unsafe.SizeOf<T>());
+        seq = seq.Slice(result.Cast<U, T>().Length);
 
         return result;
     }
-    public static ReadOnlySpan<T> GetSpanOrCopy<T>(this scoped ref ReadOnlySequence<T> seq, Span<T> buffer)
+    public static ReadOnlySpan<T> ConsumeExact<T>(this scoped ref ReadOnlySequence<T> seq, Span<T> buffer)
     {
-        var length = Math.Min(buffer.Length, (int)seq.Length);
+        var result = seq.GetSpanExact(buffer);
+
+        if (result.Length == 0)
+            return result;
+
+        seq = seq.Slice(result.Length);
+
+        return result;
+    }
+    // Read as much struct in first span from byte seq as possible, if first span is not enough, copy to buffer
+    public static ReadOnlySpan<U> GetSpanCast<T, U>(this ReadOnlySequence<T> seq, int maxLength, Span<U> buffer)
+        where T : unmanaged
+        where U : unmanaged
+    {
+        if (seq.Length * Unsafe.SizeOf<T>() < Unsafe.SizeOf<U>())
+            return default;
+
+        var result = seq.FirstSpan.Cast<T, U>();
+        result = result[..Math.Min(result.Length, maxLength)];
+
+        if (result.Length == 0)
+        {
+            seq.CopyTo(buffer.Cast<U, T>());
+            result = buffer;
+        }
+
+        return result;
+    }
+
+    public static ReadOnlySpan<T> GetSpanExact<T>(this ReadOnlySequence<T> seq, Span<T> buffer)
+    {
+        if (seq.Length < buffer.Length)
+            return default;
 
         ReadOnlySpan<T> result = buffer;
 
-        if (seq.FirstSpan.Length >= length)
-            result = seq.FirstSpan[..length];
+        if (seq.FirstSpan.Length >= buffer.Length)
+            result = seq.FirstSpan[..buffer.Length];
         else
-            seq.CopyTo(buffer);
-
-        seq = seq.Slice(length);
+            seq.Slice(0, buffer.Length).CopyTo(buffer);
 
         return result;
     }
@@ -604,3 +635,350 @@ public static class ReadOnlySequnceExtension
 //         }
 //     }
 // }
+
+public record struct PlayTask
+(ReadOnlySequence<float> Data, TaskCompletionSource<bool> Task);
+
+public class NotifySampleProvider
+(ChannelReader<PlayTask> channelReader, WaveFormat waveFormat) : ISampleProvider
+{
+    public WaveFormat WaveFormat { get; } = waveFormat;
+
+    private PlayTask currentTask = default;
+
+    public int Read(float[] buffer, int offset, int count)
+    {
+        try
+        {
+
+            if (currentTask.Data.IsEmpty)
+            {
+                // Console.WriteLine(currentTask.Task is null);
+                currentTask.Task?.TrySetResult(true);
+                while (true)
+                {
+                    if (!channelReader.TryPeek(out currentTask))
+                    {
+                        if (channelReader.Completion.IsCompleted)
+                            return 0;
+
+                        buffer.AsSpan(offset, count).Clear();
+                        return count;
+                    }
+
+                    if (currentTask.Task.Task.IsCompleted || currentTask.Data.IsEmpty)
+                        channelReader.TryRead(out _);
+                    else
+                        break;
+                }
+            }
+
+            var readed = (int)Math.Min(count, currentTask.Data.Length);
+            currentTask.Data.Slice(0, readed).CopyTo(buffer.AsSpan(offset, readed));
+            currentTask.Data = currentTask.Data.Slice(readed);
+            // Console.WriteLine(readed);
+            // for (int i = 0; i < readed; i++)
+            // {
+            //     Console.WriteLine(buffer[i + offset]);
+            // }
+            return readed;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            return 0;
+        }
+    }
+}
+
+public interface IInChannel<T>
+{
+    ValueTask<T?> ReadAsync(CancellationToken token = default);
+    // ValueTask CompleteAsync(Exception? e = null);
+    bool IsCompleted { get; }
+}
+
+public interface IOutChannel<T>
+{
+    ValueTask WriteAsync(T data, CancellationToken token = default);
+    ValueTask CompleteAsync(Exception? exception = null);
+}
+
+public interface IIOChannel<T> : IInChannel<T>,
+                                 IOutChannel<T>
+{
+}
+
+public class AudioPipeOutChannel(WaveFormat waveFormat, int quietSamples = 220) : IOutChannel<ReadOnlySequence<float>>, IAsyncDisposable
+{
+    // private readonly Channel<PlayTask> channel = Channel.CreateUnbounded<PlayTask>();
+    private readonly Pipe pipe = new(new(pauseWriterThreshold: 0));
+    private readonly float[] quietBuffer = new float[quietSamples];
+    private PipeWriter Writer => pipe.Writer;
+    public WaveFormat WaveFormat { get; } = waveFormat;
+    public PipeReader Reader => pipe.Reader;
+
+    public async ValueTask WriteAsync(ReadOnlySequence<float> data, CancellationToken ct = default)
+    {
+        foreach (var seg in data)
+        {
+            Writer.Write(seg.Span);
+        }
+        ReadOnlySpan<float> quietSpan = quietBuffer;
+        Writer.Write(quietSpan);
+        await Writer.FlushAsync(ct);
+    }
+
+    public async ValueTask CompleteAsync(Exception? exception = null)
+    {
+        await Writer.CompleteAsync(exception);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await CompleteAsync();
+    }
+    // public ValueTask Flush(bool cancel = true)
+    // {
+    //     while (channel.Reader.TryRead(out var task))
+    //     {
+    //         if (cancel)
+    //             task.Task.TrySetCanceled();
+    //         else
+    //             task.Task.TrySetResult(true);
+    //     }
+    //     return default;
+    // }
+}
+public class AudioOutChannel : IOutChannel<ReadOnlySequence<float>>, IAsyncDisposable
+{
+    private readonly Channel<PlayTask> channel = Channel.CreateUnbounded<PlayTask>();
+    public WaveFormat WaveFormat { get; }
+    public ISampleProvider SampleProvider { get; }
+    public AudioOutChannel(WaveFormat waveFormat)
+    {
+        WaveFormat = waveFormat;
+        SampleProvider = new NotifySampleProvider(channel.Reader, waveFormat);
+    }
+    public async ValueTask WriteAsync(ReadOnlySequence<float> data, CancellationToken ct = default)
+    {
+        var task = new TaskCompletionSource<bool>();
+        Console.WriteLine("Write");
+        using (ct.Register(() => task.TrySetCanceled()))
+        {
+            await channel.Writer.WriteAsync(new PlayTask(data, task), ct);
+            await task.Task;
+        }
+    }
+
+    public ValueTask CompleteAsync(Exception? exception = null)
+    {
+        channel.Writer.TryComplete();
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        return CompleteAsync();
+    }
+    // public ValueTask Flush(bool cancel = true)
+    // {
+    //     while (channel.Reader.TryRead(out var task))
+    //     {
+    //         if (cancel)
+    //             task.Task.TrySetCanceled();
+    //         else
+    //             task.Task.TrySetResult(true);
+    //     }
+    //     return default;
+    // }
+}
+
+public interface IInStream<T> : IInChannel<ReadResult<T>>
+{
+    void AdvanceTo(SequencePosition position);
+}
+
+public readonly struct ReadResult<T>(ReadOnlySequence<T> data, bool isCompleted)
+{
+    public readonly ReadOnlySequence<T> Buffer { get; } = data;
+    public readonly bool IsCompleted { get; } = isCompleted;
+}
+
+public class AudioPipeInStream<TSample> : IInStream<TSample>, IAsyncDisposable
+    where TSample : unmanaged, INumber<TSample>
+{
+    private readonly Pipe pipe = new(new(pauseWriterThreshold: 0));
+    private PipeReader Reader => pipe.Reader;
+    private readonly IWaveReader<TSample> sampleReader;
+    private readonly Sequence<TSample> seq = new();
+
+    public WaveFormat WaveFormat { get; }
+    public PipeWriter Writer => pipe.Writer;
+    public bool IsCompleted
+    {
+        get
+        {
+            return Reader.IsFinished();
+        }
+    }
+    // private TaskCompletionSource dataNotify = new();
+
+    // private ReadOnlySequence<TSample> samples = default;
+    public AudioPipeInStream(WaveFormat waveFormat)
+    {
+        WaveFormat = waveFormat;
+
+        sampleReader = Reader.ToSamples<TSample>(waveFormat);
+        Console.WriteLine(WaveFormat.Channels);
+        Console.WriteLine(WaveFormat.SampleRate);
+        Console.WriteLine(WaveFormat.Encoding);
+    }
+
+
+    public async ValueTask DisposeAsync()
+    {
+        await pipe.Reader.CompleteAsync();
+    }
+
+    public async ValueTask<ReadResult<TSample>> ReadAsync(CancellationToken token = default)
+    {
+        var result = await Reader.ReadAsync(token);
+        Reader.AdvanceTo(result.Buffer.Start);
+        if (!result.IsFinished())
+        {
+            var length = sampleReader.Length;
+
+            // Console.WriteLine($"l1 {seq.Length} {seq.AsReadOnlySequence.Start.}");
+            var readed = sampleReader.Read(seq.GetSpan(length)[..length]);
+            // Console.WriteLine($"l2 {seq.Length} {readed.Length} {length}");
+            seq.Advance(readed.Length);
+        }
+
+        // Console.WriteLine($"l3 {seq.Length} {readed.Length} {length}");
+        return new(seq, result.IsCompleted);
+    }
+
+    public void AdvanceTo(SequencePosition position)
+    {
+        // samples = samples.Slice(position);
+        seq.AdvanceTo(position);
+    }
+}
+
+public class AudioMonoInStream<TSample> : IInStream<TSample>, IAsyncDisposable
+    where TSample : unmanaged, INumber<TSample>
+{
+    private readonly Pipe pipe = new(new(pauseWriterThreshold: 0));
+    private readonly IWaveReader<TSample> sampleReader;
+    private readonly Sequence<TSample> seq = new();
+    private readonly int channel;
+    private readonly int bytesPerSample;
+    private PipeWriter Writer => pipe.Writer;
+    private PipeReader Reader => pipe.Reader;
+
+    public WaveFormat WaveFormat { get; }
+    public bool IsCompleted => Reader.IsFinished();
+    // private TaskCompletionSource dataNotify = new();
+
+    // private ReadOnlySequence<TSample> samples = default;
+    public AudioMonoInStream(WaveFormat waveFormat, int channel = 0)
+    {
+        WaveFormat = waveFormat;
+
+        sampleReader = Reader.ToSamples<TSample>(waveFormat);
+
+        bytesPerSample = waveFormat.BitsPerSample / 8;
+        this.channel = channel;
+        Console.WriteLine(WaveFormat.Channels);
+        Console.WriteLine(WaveFormat.SampleRate);
+        Console.WriteLine(WaveFormat.Encoding);
+        // .ToMonoSelect();
+    }
+    public void DataAvailable(object? sender, WaveInEventArgs args)
+    {
+        var span = args.Buffer.AsSpan(0, args.BytesRecorded);
+
+        if (WaveFormat.Channels == 1)
+            Writer.Write(span);
+        else
+            for (int i = 0; i < span.Length; i += bytesPerSample * WaveFormat.Channels)
+                Writer.Write(span.Slice(i + channel * bytesPerSample, bytesPerSample));
+
+        Writer.FlushAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
+    }
+
+    public unsafe void DataAvailable(object? sender, AsioAudioAvailableEventArgs args)
+    {
+        var length = args.SamplesPerBuffer * args.AsioSampleType switch
+        {
+            AsioSampleType.Int16LSB => 2,
+            AsioSampleType.Int24LSB => 3,
+            AsioSampleType.Int32LSB => 4,
+            AsioSampleType.Float32LSB => 4,
+            _ => throw new NotSupportedException()
+        };
+        // Console.WriteLine(length);
+
+        // for (int i = 0; i < args.SamplesPerBuffer; i++)
+        // {
+        //     Console.Write(z[i]);
+        // }
+        Writer.Write(new Span<byte>((byte*)args.InputBuffers[channel], length));
+        Writer.FlushAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
+
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await Writer.CompleteAsync();
+    }
+    // private async Task DecodeSampleAsync()
+    // {
+    //     var seq = new Sequence<TSample>();
+    //     var sampleReader = reader.ToSamples<TSample>(WaveFormat).ToMonoSelect();
+    //     while (true)
+    //     {
+    //         var result = await reader.ReadAsync();
+    //         reader.AdvanceTo(result.Buffer.Start);
+
+    //         seq.AdvanceTo(samples.Start);
+    //         var length = sampleReader.Length;
+
+    //         if (length == 0)
+    //             continue;
+
+    //         var readed = sampleReader.Read(seq.GetSpan(length));
+    //         seq.Advance(readed.Length);
+    //         samples = seq.AsReadOnlySequence;
+
+    //         dataNotify.TrySetResult();
+
+    //     }
+
+    // }
+
+    public async ValueTask<ReadResult<TSample>> ReadAsync(CancellationToken token = default)
+    {
+        var result = await Reader.ReadAsync(token);
+        Reader.AdvanceTo(result.Buffer.Start);
+        if (!result.IsFinished())
+        {
+            var length = sampleReader.Length;
+
+            // Console.WriteLine($"l1 {seq.Length} {seq.AsReadOnlySequence.Start.}");
+            var readed = sampleReader.Read(seq.GetSpan(length)[..length]);
+            // Console.WriteLine($"l2 {seq.Length} {readed.Length} {length}");
+            seq.Advance(readed.Length);
+        }
+
+        // Console.WriteLine($"l3 {seq.Length} {readed.Length} {length}");
+        return new(seq, result.IsCompleted);
+    }
+
+    public void AdvanceTo(SequencePosition position)
+    {
+        // samples = samples.Slice(position);
+        seq.AdvanceTo(position);
+    }
+}

@@ -1,7 +1,9 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading.Channels;
 using NAudio.Wave;
 using STH1123.ReedSolomon;
 
@@ -9,6 +11,12 @@ namespace CS120.Utils.Extension;
 
 public static class IEnumerableExtension
 {
+    public static IEnumerable<T> GetElements<T>(this ReadOnlySequence<T> source)
+    {
+        foreach (var item in source)
+            for (var i = 0; i < item.Length; i++)
+                yield return item.Span[i];
+    }
     public static void TakeInto<T>(this IEnumerable<T> source, Span<T> buffer)
     {
         var index = 0;
@@ -49,8 +57,13 @@ public static class SampleProviderExtension
     }
 }
 
-public static class PipeReaderExtension
+public static class ReaderExtension
 {
+    public static bool IsFinished<T>(this ChannelReader<T> reader)
+    {
+        return reader.Completion.IsCompleted && !reader.TryPeek(out _);
+    }
+
     public static bool IsFinished(this PipeReader pipeReader)
     {
         if (pipeReader.TryRead(out var readResult))
