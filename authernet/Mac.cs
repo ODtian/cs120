@@ -195,6 +195,9 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     private int LastDataSend => (LastAckReceived + windowSize) % sequenceSize;
     private ChannelReader<ReadOnlySequence<byte>> RxReader => channelRx.Reader;
     private ChannelWriter<ReadOnlySequence<byte>> RxWriter => channelRx.Writer;
+    private Random random;
+
+    private float factor;
     public bool IsCompleted => RxReader.IsFinished();
     public MacD(
         IInChannel<ReadOnlySequence<byte>> inChannel,
@@ -212,6 +215,9 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         this.inChannel = inChannel;
         this.outChannel = outChannel;
 
+        random = new(from);
+        factor = random.NextSingle() * 0.5f + 0.5f;
+        Console.WriteLine($"Factor: {factor}");
         ackSource = new(windowSize);
         receiveTask = RunHandleReceiveAsync();
 
@@ -235,6 +241,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         var slot = await windowSlotChannel.Reader.ReadAsync(ct);
 
         var task = ackSource.WaitAsync(slot, ct).AsTask();
+        var tries = random.NextSingle() * 0.5f + 0.5f; ;
         do
         {
             await outChannel.WriteAsync(
@@ -246,13 +253,16 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             Console.WriteLine($"Send {slot}");
             try
             {
-                var exception = await task.WaitAsync(TimeSpan.FromMilliseconds(10000), ct);
+                var exception = await task.WaitAsync(TimeSpan.FromMilliseconds(500) * tries, ct);
+                // var exception = await task.WaitAsync(TimeSpan.FromMilliseconds(2000), ct);
                 if (exception is not null)
                     throw exception;
                 break;
             }
             catch (TimeoutException)
             {
+                tries = random.NextSingle() * 0.5f + 0.5f;
+                // tries += random.NextSingle() * 0.5f + 0.5f;
             }
         } while (true);
     }
@@ -286,12 +296,15 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     }
     private async Task HandleReceiveAsync()
     {
+        var quiet = new byte[0];
         while (true)
         {
             var packet = await inChannel.ReadAsync(cts.Token);
 
-            if (packet.Length == 0)
+            if (packet.IsEmpty)
+            {
                 break;
+            }
 
             packet.MacDecode(out var mac);
             if (mac.Dest == from)
@@ -299,9 +312,10 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                 if (mac.Type is MacFrame.FrameType.Data)
                 {
                     Console.WriteLine($"Receive Data {mac.SequenceNumber}");
+                    var ts = DateTime.Now;
                     _ = outChannel
                             .WriteAsync(
-                                new ReadOnlySequence<byte>().MacEncode(new(
+                                new ReadOnlySequence<byte>(quiet).MacEncode(new(
                                 )
                                 {
                                     Source = mac.Dest,
@@ -312,16 +326,16 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                                 cts.Token
                             )
                             .AsTask();
-
+                    // Console.WriteLine($"Ack {mac.SequenceNumber} {(DateTime.Now - ts).TotalMilliseconds}");
                     receivedDataCache[mac.SequenceNumber] = packet;
 
                     if (mac.SequenceNumber == NextDataNumber)
                     {
                         while (receivedDataCache.ContainsKey(NextDataNumber))
                         {
+                            RxWriter.TryWrite(receivedDataCache[NextDataNumber]);
                             receivedDataCache.Remove(NextDataNumber);
                             LastDataReceived = NextDataNumber;
-                            channelRx.Writer.TryWrite(packet);
                         }
                     }
                 }

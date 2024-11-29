@@ -15,6 +15,8 @@ using System.Threading.Channels;
 using Nerdbank.Streams;
 using NAudio.Wave.Asio;
 using DotNext;
+using MathNet.Numerics.LinearAlgebra;
+using MathNet.Numerics.Data.Matlab;
 namespace CS120.Utils.Wave;
 
 public class StreamWaveProvider
@@ -651,6 +653,7 @@ public class NotifySampleProvider
         try
         {
 
+            // Console.WriteLine(count);
             if (currentTask.Data.IsEmpty)
             {
                 // Console.WriteLine(currentTask.Task is null);
@@ -661,9 +664,11 @@ public class NotifySampleProvider
                     {
                         if (channelReader.Completion.IsCompleted)
                             return 0;
-
-                        buffer.AsSpan(offset, count).Clear();
-                        return count;
+                        // if (readed == 0)
+                        {
+                            buffer.AsSpan(offset, count).Clear();
+                            return count;
+                        }
                     }
 
                     if (currentTask.Task.Task.IsCompleted || currentTask.Data.IsEmpty)
@@ -676,6 +681,12 @@ public class NotifySampleProvider
             var readed = (int)Math.Min(count, currentTask.Data.Length);
             currentTask.Data.Slice(0, readed).CopyTo(buffer.AsSpan(offset, readed));
             currentTask.Data = currentTask.Data.Slice(readed);
+
+            if (currentTask.Data.IsEmpty)
+            {
+                // Console.WriteLine(currentTask.Task is null);
+                currentTask.Task?.TrySetResult(true);
+            }
             // Console.WriteLine(readed);
             // for (int i = 0; i < readed; i++)
             // {
@@ -763,7 +774,6 @@ public class AudioOutChannel : IOutChannel<ReadOnlySequence<float>>, IAsyncDispo
     public async ValueTask WriteAsync(ReadOnlySequence<float> data, CancellationToken ct = default)
     {
         var task = new TaskCompletionSource<bool>();
-        Console.WriteLine("Write");
         using (ct.Register(() => task.TrySetCanceled()))
         {
             await channel.Writer.WriteAsync(new PlayTask(data, task), ct);
@@ -879,6 +889,7 @@ public class AudioMonoInStream<TSample> : IInStream<TSample>, IAsyncDisposable
 
     public WaveFormat WaveFormat { get; }
     public bool IsCompleted => Reader.IsFinished();
+    private List<TSample> samples = [];
     // private TaskCompletionSource dataNotify = new();
 
     // private ReadOnlySequence<TSample> samples = default;
@@ -904,7 +915,6 @@ public class AudioMonoInStream<TSample> : IInStream<TSample>, IAsyncDisposable
         else
             for (int i = 0; i < span.Length; i += bytesPerSample * WaveFormat.Channels)
                 Writer.Write(span.Slice(i + channel * bytesPerSample, bytesPerSample));
-
         Writer.FlushAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
     }
 
@@ -931,6 +941,9 @@ public class AudioMonoInStream<TSample> : IInStream<TSample>, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+
+        var mat = Matrix<TSample>.Build.DenseOfColumnMajor(1, samples.Count, [.. samples]);
+        MatlabWriter.Write("../matlab/debugwav.mat", mat, $"audio");
         await Writer.CompleteAsync();
     }
     // private async Task DecodeSampleAsync()
@@ -968,6 +981,7 @@ public class AudioMonoInStream<TSample> : IInStream<TSample>, IAsyncDisposable
 
             // Console.WriteLine($"l1 {seq.Length} {seq.AsReadOnlySequence.Start.}");
             var readed = sampleReader.Read(seq.GetSpan(length)[..length]);
+            samples.AddRange(readed);
             // Console.WriteLine($"l2 {seq.Length} {readed.Length} {length}");
             seq.Advance(readed.Length);
         }

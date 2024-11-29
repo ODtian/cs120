@@ -460,17 +460,21 @@ public class RXPhy<TSample> : IInChannel<ReadOnlySequence<byte>>, IAsyncDisposab
                                .LengthDecode<byte>(out var lengthValid)
                                .RSDecode(Program.eccNums, out var eccValid);
 
-                Console.WriteLine("//// Receive");
-                foreach (var d in data.GetElements())
-                {
-                    Console.Write($"{d:X2} ");
-                }
-                Console.WriteLine();
-                Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-                Console.WriteLine("////");
+                // Console.WriteLine("//// Receive");
+                // foreach (var d in data.GetElements())
+                // {
+                //     Console.Write($"{d:X2} ");
+                // }
+                // Console.WriteLine();
+                // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+                // Console.WriteLine("////");
 
-                // if (lengthValid && eccValid)
-                await RxWriter.WriteAsync(data);
+                if (lengthValid && eccValid)
+                {
+                    await RxWriter.WriteAsync(data);
+                }
+                data.MacGet(out var mac);
+                Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
             }
             else if (result.IsCompleted)
                 return;
@@ -566,7 +570,7 @@ public class CSMAPhy<TSample>
 
     private ChannelReader<ReadOnlySequence<byte>> RxReader => channelRx.Reader;
     private ChannelWriter<ReadOnlySequence<byte>> RxWriter => channelRx.Writer;
-
+    private int seed;
 
     public bool IsCompleted => RxReader.IsFinished();
     public CSMAPhy(
@@ -575,7 +579,8 @@ public class CSMAPhy<TSample>
         ISequnceReader<TSample, byte> demodulator,
         ISequnceReader<byte, TSample> modulator,
         ISequnceSearcher<TSample> preambleDetection,
-        ISequnceSearcher<TSample> carrierSensor
+        ISequnceSearcher<TSample> carrierSensor,
+        int seed
     )
     {
         samplesIn = inStream;
@@ -590,6 +595,7 @@ public class CSMAPhy<TSample>
         // cts = new CancellationTokenSource();
         // processTask = Task.Run(ProcessAsync);
         processTask = Task.Run(RunProcessAsync);
+        this.seed = seed;
     }
     public async ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct)
     {
@@ -602,20 +608,37 @@ public class CSMAPhy<TSample>
 
     public async ValueTask WriteAsync(ReadOnlySequence<byte> data, CancellationToken ct)
     {
-        Console.WriteLine("//// Send");
-        foreach (var d in data.GetElements())
-        {
-            Console.Write($"{d:X2} ");
-        }
-        Console.WriteLine();
-        Console.WriteLine("////");
+        // Console.WriteLine("//// Send");
+        // foreach (var d in data.GetElements())
+        // {
+        //     Console.Write($"{d:X2} ");
+        // }
+        // Console.WriteLine();
+        // Console.WriteLine("////");
         data = data.RSEncode(Program.eccNums).LengthEncode<byte>();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
 
         using (await sendLock.AcquireLockAsync(linked.Token))
         {
-            if (!quiet)
-                await quietTrigger.WaitAsync(linked.Token);
+            // while (!quiet)
+            // {
+            //     await Task.Delay(200 * new Random(seed).Next(1, 4), linked.Token);
+            // }
+            // if (!quiet)
+            // if (data.Length > 16)
+            // {
+            //     var quiet = false;
+            //     while (!quiet)
+            //     {
+            //         var result = await samplesIn.ReadAsync(linked.Token);
+            //         var seq = result.Buffer.Slice(Math.Min(0, result.Buffer.Length - 400));
+            //         quiet = !carrierSensor.TrySearch(ref seq);
+            //         // if (quiet)
+            //         //     quietTrigger.Signal();
+            //         // samplesIn.AdvanceTo(seq.Start);
+            //     }
+            // }
+            // await quietTrigger.WaitAsync(linked.Token);
 
             // var writer = new ArrayBufferWriter<TSample>();
             modulator.TryRead(ref data, sequence);
@@ -623,7 +646,7 @@ public class CSMAPhy<TSample>
             await samplesOut.WriteAsync(sequence.AsReadOnlySequence, linked.Token);
             sequence.Reset();
 
-            // await Task.Delay(80, linked.Token);
+            // await Task.Delay(40, linked.Token);
         }
     }
 
@@ -651,57 +674,125 @@ public class CSMAPhy<TSample>
                 RxWriter.TryComplete(e);
         }
     }
+
+
     private async Task ProcessAsync()
     {
+        var buf = new TSample[480];
+        buf.AsSpan().Fill(TSample.One * TSample.CreateChecked(1));
+        ReadOnlySequence<TSample> seq = default;
         while (true)
         {
+
             var result = await samplesIn.ReadAsync(cts.Token);
-            var seq = result.Buffer;
-            // Console.WriteLine("Quiet");
+            var originalLength = seq.Length;
+            seq = result.Buffer;
+            var x = seq.Slice(originalLength);
+            quiet = !carrierSensor.TrySearch(ref x);
+            // Console.WriteLine(quiet);
+            if (quiet)
+                quietTrigger.Signal();
+            // if (carrierSensor.TrySearch(ref seq) == quiet)
+            // {
+            //     quiet = !quiet;
+            //     if (quiet)
+            //         quietTrigger.Signal();
+            // }
 
-            if (carrierSensor.TrySearch(ref seq))
+            if (preambleDetection.TrySearch(ref seq))
             {
-                quiet = false;
-                if (preambleDetection.TrySearch(ref seq))
+                var ts = DateTime.Now;
+                samplesIn.AdvanceTo(seq.Start);
+                var writer = new ArrayBufferWriter<byte>();
+                while (!demodulator.TryRead(ref seq, writer))
                 {
-                    samplesIn.AdvanceTo(seq.Start);
-                    var writer = new ArrayBufferWriter<byte>();
-                    while (!demodulator.TryRead(ref seq, writer))
-                    {
-                        if (result.IsCompleted)
-                            return;
-                        result = await samplesIn.ReadAsync(cts.Token);
-                        seq = result.Buffer;
-                    }
-
-                    var data = new ReadOnlySequence<byte>(writer.WrittenMemory)
-                                   .LengthDecode<byte>(out var lengthValid)
-                                   .RSDecode(Program.eccNums, out var eccValid);
-
-                    Console.WriteLine("//// Receive");
-                    foreach (var d in data.GetElements())
-                    {
-                        Console.Write($"{d:X2} ");
-                    }
-                    Console.WriteLine();
-                    Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-                    Console.WriteLine("////");
-
-                    if (lengthValid && eccValid)
-                        await RxWriter.WriteAsync(data);
+                    if (result.IsCompleted)
+                        return;
+                    result = await samplesIn.ReadAsync(cts.Token);
+                    // originalLength = seq.Length;
+                    // seq = result.Buffer;
+                    // x = seq.Slice(originalLength);
+                    // quiet = !carrierSensor.TrySearch(ref x);
+                    // if (quiet)
+                    //     quietTrigger.Signal();
+                    seq = result.Buffer;
+                    ts = DateTime.Now;
                 }
-                else if (samplesIn.IsCompleted)
-                    return;
+                // Console.WriteLine(DateTime.Now - ts);
+                // await samplesOut.WriteAsync(new ReadOnlySequence<TSample>(buf), cts.Token);
+                var data = new ReadOnlySequence<byte>(writer.WrittenMemory)
+                               .LengthDecode<byte>(out var lengthValid)
+                               .RSDecode(Program.eccNums, out var eccValid);
+                // Console.WriteLine("//// Receive");
+                // foreach (var d in data.GetElements())
+                // {
+                //     Console.Write($"{d:X2} ");
+                // }
+                // Console.WriteLine();
+                // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+                // Console.WriteLine("////");
+                // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+
+                if (lengthValid && eccValid)
+                {
+                    await RxWriter.WriteAsync(data);
+                    data.MacGet(out var mac);
+                    Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
+                }
             }
             else if (result.IsCompleted)
-                return;
-            else
             {
-                quiet = true;
-                quietTrigger.Signal();
+                return;
             }
 
+            // if (carrierSensor.TrySearch(ref seq))
+            // {
+            //     quiet = false;
+            //     if (preambleDetection.TrySearch(ref seq))
+            //     {
+            //         samplesIn.AdvanceTo(seq.Start);
+            //         var writer = new ArrayBufferWriter<byte>();
+            //         while (!demodulator.TryRead(ref seq, writer))
+            //         {
+            //             if (result.IsCompleted)
+            //                 return;
+            //             result = await samplesIn.ReadAsync(cts.Token);
+            //             seq = result.Buffer;
+            //         }
+
+            //         var data = new ReadOnlySequence<byte>(writer.WrittenMemory)
+            //                        .LengthDecode<byte>(out var lengthValid)
+            //                        .RSDecode(Program.eccNums, out var eccValid);
+            //         // Console.WriteLine("//// Receive");
+            //         // foreach (var d in data.GetElements())
+            //         // {
+            //         //     Console.Write($"{d:X2} ");
+            //         // }
+            //         // Console.WriteLine();
+            //         // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+            //         // Console.WriteLine("////");
+            //         // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+
+            //         if (lengthValid && eccValid)
+            //         {
+            //             await RxWriter.WriteAsync(data);
+            //             data.MacGet(out var mac);
+            //             Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
+            //         }
+            //     }
+            //     else if (samplesIn.IsCompleted)
+            //         return;
+            // }
+            // else if (result.IsCompleted)
+            //     return;
+            // else
+            // {
+            //     quiet = true;
+            //     quietTrigger.Signal();
+            // }
+
             samplesIn.AdvanceTo(seq.Start);
+
         }
     }
 }

@@ -40,8 +40,15 @@ class Program
         FreqB = 10_000 // Read config or something
     };
 
+    public static LineSymbolOption lineOption = new()
+    {
+        NumSymbols = 2,
+        NumSamplesPerSymbol = 3,
+    };
+
     public static float corrThreshold = 0.4f;
-    public static int maxPeakFalling = chirpOption.NumSamplesPerSymbol / 2;
+    // public static int maxPeakFalling = chirpOption.NumSamplesPerSymbol / 2;
+    public static int maxPeakFalling = 0;
     public static float smoothedEnergyFactor = 1f / 64f;
 
     public static int eccNums = 2;
