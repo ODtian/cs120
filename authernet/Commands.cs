@@ -552,7 +552,7 @@ public static class CommandTask
             new PreambleDetection<float>(
                 preamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
             ),
-            new CarrierQuietSensor1<float>(0.5f),
+            new CarrierQuietSensor1<float>(0.05f),
             addressSource
         );
 
