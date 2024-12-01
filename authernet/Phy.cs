@@ -625,7 +625,6 @@ public class CSMAPhy<TSample>
             //     await Task.Delay(200 * new Random(seed).Next(1, 4), linked.Token);
             // }
             // if (!quiet)
-            // if (data.Length > 16)
             // {
             //     var quiet = false;
             //     while (!quiet)
@@ -638,6 +637,7 @@ public class CSMAPhy<TSample>
             //         // samplesIn.AdvanceTo(seq.Start);
             //     }
             // }
+            // if (data.Length > 16)
             await quietTrigger.WaitAsync(linked.Token);
 
             // var writer = new ArrayBufferWriter<TSample>();
