@@ -32,8 +32,7 @@ class Program
     public static DPSKSymbolOption option =
         new() { NumSymbols = 2, NumRedundant = 1, SampleRate = 48000, Freq = 6_000 };
 
-    public static ChirpSymbolOption chirpOption = new()
-    {
+    public static ChirpSymbolOption chirpOption = new() {
         NumSymbols = 2,
         Duration = 0.001f, // Read config or something
         SampleRate = 48_000,
@@ -41,8 +40,7 @@ class Program
         FreqB = 10_000 // Read config or something
     };
 
-    public static LineSymbolOption lineOption = new()
-    {
+    public static LineSymbolOption lineOption = new() {
         NumSymbols = 2,
         NumSamplesPerSymbol = 3,
     };
@@ -75,12 +73,12 @@ class Program
         rootCommand.AddCommand(CommandBuilder.BuildReceiveCommand());
         rootCommand.AddCommand(CommandBuilder.BuildDuplexCommand());
         rootCommand.AddCommand(CommandBuilder.BuildListWASAPICommand());
+        rootCommand.AddCommand(CommandBuilder.DummyAdapterCommand());
         rootCommand.AddCommand(CommandBuilder.AdapterCommand());
         rootCommand.AddCommand(CommandBuilder.HotSpotCommand());
 
-
-
-        // var x = Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager.CreateFromConnectionProfile(profile);
+        // var x =
+        // Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager.CreateFromConnectionProfile(profile);
 
         // x.
         // var x = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 };

@@ -649,11 +649,9 @@ public static class CommandTask
 
         async Task TunRxDaemonAsync()
         {
-            WinTun.Packet packet = default;
             while (true)
             {
-                // session.WaitForRead
-                if (session.ReceivePacket(out packet))
+                if (session.ReceivePacket(out var packet))
                 {
                     // for (var i = 0; i < packet.Span.Length; i++)
                     // {
@@ -663,15 +661,16 @@ public static class CommandTask
                     Console.WriteLine();
                     var packetArr = packet.Span.ToArray();
                     var ipPacket = new IPv4Packet(new(packetArr));
-                    Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+                    if (ipPacket.Protocol is ProtocolType.Icmp)
+                    {
+                        Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+                        await rx.Writer.WriteAsync(new(packetArr), cts.Source.Token);
+                    }
                     // rx.TryWrite(packetArr);
-                    await rx.Writer.WriteAsync(new(packetArr), cts.Source.Token);
                     session.ReleaseReceivePacket(packet);
                 }
                 else
-                {
                     session.WaitForRead(TimeSpan.MaxValue);
-                }
             }
         }
 
@@ -1024,6 +1023,27 @@ public static class CommandBuilder
     {
         var command = new Command("dummy-adapter", "Run an dummy adapter");
 
+        var loopBackOption =
+            new Option<bool>(name: "--loopback", description: "Use loopback adapter", getDefaultValue: () => false);
+
+        var adapterNameOption = new Option<string>(
+            name: "--name", description: "The adapter name to use", getDefaultValue: () => "Athernet"
+        );
+
+        var guidIndexOption =
+            new Option<int>(name: "--guid", description: "The guid index to use", getDefaultValue: () => 0);
+
+        command.AddOption(loopBackOption);
+        command.AddOption(adapterNameOption);
+        command.AddOption(guidIndexOption);
+        command.SetHandler(CommandTask.DummyAdapterTaskAsync, loopBackOption, adapterNameOption, guidIndexOption);
+
+        return command;
+    }
+    public static Command AdapterCommand()
+    {
+        var command = new Command("adapter", "Run an dummy adapter");
+
         var addressSourceArgument =
             new Argument<byte>(name: "source", description: "The mac address", getDefaultValue: () => 0);
 
@@ -1044,32 +1064,21 @@ public static class CommandBuilder
         var guidIndexOption =
             new Option<int>(name: "--guid", description: "The guid index to use", getDefaultValue: () => 0);
 
-        command.AddOption(loopBackOption);
+        command.AddArgument(addressSourceArgument);
+        command.AddArgument(addressDestArgument);
+        command.AddOption(txOption);
+        command.AddOption(rxOption);
         command.AddOption(adapterNameOption);
         command.AddOption(guidIndexOption);
-        command.SetHandler(CommandTask.DummyAdapterTaskAsync, loopBackOption, adapterNameOption, guidIndexOption);
-
-        return command;
-    }
-
-    public static Command AdapterCommand()
-    {
-        var command = new Command("adapter", "Run an dummy adapter");
-
-        var loopBackOption =
-            new Option<bool>(name: "--loopback", description: "Use loopback adapter", getDefaultValue: () => false);
-
-        var adapterNameOption = new Option<string>(
-            name: "--name", description: "The adapter name to use", getDefaultValue: () => "Athernet"
+        command.SetHandler(
+            CommandTask.AdapterTaskAsync,
+            addressSourceArgument,
+            addressDestArgument,
+            txOption,
+            rxOption,
+            adapterNameOption,
+            guidIndexOption
         );
-
-        var guidIndexOption =
-            new Option<int>(name: "--guid", description: "The guid index to use", getDefaultValue: () => 0);
-
-        command.AddOption(loopBackOption);
-        command.AddOption(adapterNameOption);
-        command.AddOption(guidIndexOption);
-        command.SetHandler(CommandTask.DummyAdapterTaskAsync, loopBackOption, adapterNameOption, guidIndexOption);
 
         return command;
     }
