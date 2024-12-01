@@ -22,6 +22,7 @@ using System.Threading.Channels;
 using PacketDotNet;
 using System.Net;
 using System.CommandLine.Invocation;
+using CS120.Utils.Extension;
 namespace CS120.Commands;
 
 public static class CommandTask
@@ -680,6 +681,10 @@ public static class CommandTask
         {
             await foreach (var data in tx.Reader.ReadAllAsync(cts.Source.Token))
             {
+                var ipPacket = new IPv4Packet(new(data.ToArray()));
+                Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+                foreach (var b in data.GetElements())
+                    Console.Write($"{b:X2} ");
                 session.AllocateSendPacket((uint)data.Length, out var send);
                 data.CopyTo(send.Span);
                 session.SendPacket(send);
@@ -754,11 +759,11 @@ public static class CommandTask
             while (true)
             {
                 var packet = await mac.ReadAsync(cts.Source.Token);
-                foreach (var b in packet.ToArray())
-                    Console.Write($"{b:X2} ");
+                Console.WriteLine(packet.ToArray().Length);
                 if (packet.IsEmpty)
                     break;
                 await tx.Writer.WriteAsync(packet, cts.Source.Token);
+                Console.WriteLine("Rx");
             }
         }
 

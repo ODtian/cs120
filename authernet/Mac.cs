@@ -306,7 +306,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                 break;
             }
 
-            packet.MacDecode(out var mac);
+            packet = packet.MacDecode(out var mac);
             if (mac.Dest == from)
             {
                 if (mac.Type is MacFrame.FrameType.Data)

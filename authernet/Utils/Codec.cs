@@ -151,6 +151,11 @@ public static class CodecRS
 
     public static byte[] Decode(ReadOnlySpan<byte> bytes, int eccNums, out bool valid)
     {
+        if (bytes.Length < eccNums + 1)
+        {
+            valid = false;
+            return [];
+        }
         var data = new byte[bytes.Length - 1 - eccNums];
         var toDecode = new int[bytes.Length];
         for (int i = 0; i < bytes.Length; i++)
