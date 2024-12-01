@@ -1,3 +1,5 @@
+#define ASIO
+
 using System.CommandLine;
 using System.IO.Pipelines;
 using System.Text;
@@ -596,7 +598,6 @@ public static class CommandTask
         [new("8D2D7623-926F-BCCF-0DA8-D5AFAF4C1B27"), new("2C83A46F-1AF2-85D9-DB52-DFBF0D26B629")];
     public static async Task DummyAdapterTaskAsync(bool loopBack, string adapterName, int guidIndex)
     {
-
         using var adapter = Adapter.Create(adapterName, adapterName, guids[guidIndex]);
         using var session = adapter.StartSession(0x40000);
         var rx = Channel.CreateUnbounded<byte[]>();
@@ -651,6 +652,7 @@ public static class CommandTask
         {
             while (true)
             {
+                cts.Source.Token.ThrowIfCancellationRequested();
                 if (session.ReceivePacket(out var packet))
                 {
                     // for (var i = 0; i < packet.Span.Length; i++)
@@ -670,7 +672,7 @@ public static class CommandTask
                     session.ReleaseReceivePacket(packet);
                 }
                 else
-                    session.WaitForRead(TimeSpan.MaxValue);
+                    session.WaitForRead(TimeSpan.FromMilliseconds(20));
             }
         }
 
