@@ -409,8 +409,8 @@ public class RXPhy<TSample> : IInChannel<ReadOnlySequence<byte>>, IAsyncDisposab
         if (samples.Count > 0)
         {
             // var length = samples.Select(x => x.Length).Max();
-            // var samplesResize = samples.Select(x => x.Concat(Enumerable.Repeat(default(TSample), length - x.Length)));
-            // var mat = Matrix<TSample>.Build.DenseOfRows(samplesResize);
+            // var samplesResize = samples.Select(x => x.Concat(Enumerable.Repeat(default(TSample), length -
+            // x.Length))); var mat = Matrix<TSample>.Build.DenseOfRows(samplesResize);
             // MatlabWriter.Write("../matlab/receive.mat", mat, $"audio_rec");
         }
     }
@@ -496,7 +496,8 @@ public class RXPhy<TSample> : IInChannel<ReadOnlySequence<byte>>, IAsyncDisposab
 }
 
 public class TXPhy<TSample>(IOutChannel<ReadOnlySequence<TSample>> outChannel, ISequnceReader<byte, TSample> modulator)
-    : IOutChannel<ReadOnlySequence<byte>>, IAsyncDisposable where TSample : unmanaged, INumber<TSample>
+    : IOutChannel<ReadOnlySequence<byte>>, IAsyncDisposable
+    where TSample : unmanaged, INumber<TSample>
 {
     private readonly IOutChannel<ReadOnlySequence<TSample>> samplesOut = outChannel;
     private readonly ISequnceReader<byte, TSample> modulator = modulator;
@@ -608,13 +609,13 @@ public class CSMAPhy<TSample>
 
     public async ValueTask WriteAsync(ReadOnlySequence<byte> data, CancellationToken ct)
     {
-        // Console.WriteLine("//// Send");
-        // foreach (var d in data.GetElements())
-        // {
-        //     Console.Write($"{d:X2} ");
-        // }
-        // Console.WriteLine();
-        // Console.WriteLine("////");
+        Console.WriteLine("//// Send");
+        foreach (var d in data.GetElements())
+        {
+            Console.Write($"{d:X2} ");
+        }
+        Console.WriteLine();
+        Console.WriteLine("////");
         data = data.RSEncode(Program.eccNums).LengthEncode<byte>();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
 
@@ -674,7 +675,6 @@ public class CSMAPhy<TSample>
                 RxWriter.TryComplete(e);
         }
     }
-
 
     private async Task ProcessAsync()
     {
@@ -777,7 +777,8 @@ public class CSMAPhy<TSample>
             //         {
             //             await RxWriter.WriteAsync(data);
             //             data.MacGet(out var mac);
-            //             Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
+            //             Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type}
+            //             {mac.SequenceNumber}");
             //         }
             //     }
             //     else if (samplesIn.IsCompleted)
@@ -792,7 +793,6 @@ public class CSMAPhy<TSample>
             // }
 
             samplesIn.AdvanceTo(seq.Start);
-
         }
     }
 }

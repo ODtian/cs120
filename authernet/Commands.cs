@@ -742,7 +742,8 @@ public static class CommandTask
 
         async Task FillTxAsync()
         {
-            await foreach (var packet in tx.Reader.ReadAllAsync(cts.Source.Token))
+
+            await foreach (var packet in rx.Reader.ReadAllAsync(cts.Source.Token))
             {
                 await mac.WriteAsync(packet, cts.Source.Token);
             }
@@ -753,9 +754,11 @@ public static class CommandTask
             while (true)
             {
                 var packet = await mac.ReadAsync(cts.Source.Token);
+                foreach (var b in packet.ToArray())
+                    Console.Write($"{b:X2} ");
                 if (packet.IsEmpty)
                     break;
-                await rx.Writer.WriteAsync(packet, cts.Source.Token);
+                await tx.Writer.WriteAsync(packet, cts.Source.Token);
             }
         }
 

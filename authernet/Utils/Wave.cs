@@ -939,8 +939,8 @@ public static class WaveReaderExtension
         public async ValueTask DisposeAsync()
         {
 
-            var mat = Matrix<TSample>.Build.DenseOfColumnMajor(1, samples.Count, [..samples]);
-            MatlabWriter.Write("../matlab/debugwav.mat", mat, $"audio");
+            // var mat = Matrix<TSample>.Build.DenseOfColumnMajor(1, samples.Count, [..samples]);
+            // MatlabWriter.Write("../matlab/debugwav.mat", mat, $"audio");
             await Writer.CompleteAsync();
         }
         // private async Task DecodeSampleAsync()

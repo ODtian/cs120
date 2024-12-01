@@ -241,13 +241,13 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         var slot = await windowSlotChannel.Reader.ReadAsync(ct);
 
         var task = ackSource.WaitAsync(slot, ct).AsTask();
-        var tries = random.NextSingle() * 0.5f + 0.5f; ;
+        var tries = random.NextSingle() * 0.5f + 0.5f;
+        var retry = 0;
         do
         {
             await outChannel.WriteAsync(
                 data.MacEncode(new(
-                )
-                { Source = from, Dest = to, Type = MacFrame.FrameType.Data, SequenceNumber = (byte)slot }),
+                ) { Source = from, Dest = to, Type = MacFrame.FrameType.Data, SequenceNumber = (byte)slot }),
                 ct
             );
             Console.WriteLine($"Send {slot}");
@@ -264,7 +264,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                 tries = random.NextSingle() * 0.5f + 0.5f;
                 // tries += random.NextSingle() * 0.5f + 0.5f;
             }
-        } while (true);
+        } while (retry++ < 10);
     }
 
     public ValueTask CompleteAsync(Exception? exception) => outChannel.CompleteAsync(exception);
@@ -316,13 +316,10 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                     _ = outChannel
                             .WriteAsync(
                                 new ReadOnlySequence<byte>(quiet).MacEncode(new(
-                                )
-                                {
-                                    Source = mac.Dest,
+                                ) { Source = mac.Dest,
                                     Dest = mac.Source,
                                     Type = MacFrame.FrameType.Ack,
-                                    SequenceNumber = mac.SequenceNumber
-                                }),
+                                    SequenceNumber = mac.SequenceNumber }),
                                 cts.Token
                             )
                             .AsTask();
