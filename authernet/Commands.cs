@@ -658,12 +658,12 @@ public static class CommandTask
                     //     Console.Write($"{packet.Span[i]:X2} ");
                     // }
                     // Console.WriteLine();
-                    Console.WriteLine();
                     var packetArr = packet.Span.ToArray();
                     var ipPacket = new IPv4Packet(new(packetArr));
                     if (ipPacket.Protocol is ProtocolType.Icmp)
                     {
                         Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+                        Console.WriteLine();
                         await rx.Writer.WriteAsync(new(packetArr), cts.Source.Token);
                     }
                     // rx.TryWrite(packetArr);
@@ -756,21 +756,6 @@ public static class CommandTask
                 await rx.Writer.WriteAsync(packet, cts.Source.Token);
             }
         }
-
-        // if (send is not null)
-        // {
-        //     // wasapiIn.DataAvailable += (s, e) =>
-        //     // {
-        //     //     wave.Write(e.Buffer, 0, e.BytesRecorded);
-        //     // };
-        //     var index = 0;
-        //     await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 128, binaryTxt, cts.Source.Token))
-        //     {
-        //         await mac.WriteAsync(new ReadOnlySequence<byte>(packet).IDEncode<byte>(index++), cts.Source.Token);
-        //         // await Task.Delay(200);
-        //     }
-        // }
-        // await foreach(var x in mac.)
 
         await Task.WhenAll(
             FillTxAsync(), FillRxAsync(), audioTask, Task.Run(TunRxDaemonAsync), Task.Run(TunTxDaemonAsync)
