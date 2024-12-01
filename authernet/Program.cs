@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using CS120.Commands;
 using Nerdbank.Streams;
 using CS120.Utils.Extension;
+using MathNet.Numerics;
 
 namespace CS120;
 
@@ -34,7 +35,7 @@ class Program
     public static ChirpSymbolOption chirpOption = new()
     {
         NumSymbols = 2,
-        Duration = 0.005f, // Read config or something
+        Duration = 0.001f, // Read config or something
         SampleRate = 48_000,
         FreqA = 3_000, // Read config or something
         FreqB = 10_000 // Read config or something
@@ -74,6 +75,14 @@ class Program
         rootCommand.AddCommand(CommandBuilder.BuildReceiveCommand());
         rootCommand.AddCommand(CommandBuilder.BuildDuplexCommand());
         rootCommand.AddCommand(CommandBuilder.BuildListWASAPICommand());
+        rootCommand.AddCommand(CommandBuilder.AdapterCommand());
+        rootCommand.AddCommand(CommandBuilder.HotSpotCommand());
+
+
+
+        // var x = Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager.CreateFromConnectionProfile(profile);
+
+        // x.
         // var x = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 };
 
         // var b = new ReadOnlySequence<byte>(x).RSEncode(3).LengthEncode<byte>();

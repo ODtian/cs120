@@ -15,6 +15,11 @@ using CS120.Symbol;
 using CS120.Mac;
 using System.Buffers;
 using DotNext;
+using WinTun;
+using System.Threading.Channels;
+using PacketDotNet;
+using System.Net;
+using System.CommandLine.Invocation;
 namespace CS120.Commands;
 
 public static class CommandTask
@@ -452,9 +457,7 @@ public static class CommandTask
         // await using (disposableAsync)
         var preamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = waveFormat.SampleRate });
 
-        var demodulator = new Demodulator<LineSymbol<float>, float, byte>(
-            Program.lineOption, 255
-        );
+        var demodulator = new Demodulator<LineSymbol<float>, float, byte>(Program.lineOption, 255);
         // var demodulator = new Demodulator<LineSymbol<float>, float, byte>(
         //     Program.lineOption with { SampleRate = waveFormat.SampleRate }, 255
         // );
@@ -519,8 +522,7 @@ public static class CommandTask
         var recordFormat = new WaveFormat(48000, 32, 1);
         var playbackFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 1);
         await using var audioIn = new AudioMonoInStream<float>(recordFormat, 0);
-        await using var audioOut =
-            new AudioOutChannel(playbackFormat);
+        await using var audioOut = new AudioOutChannel(playbackFormat);
         // await using var audioIn = new AudioMonoInStream<float>(wasapiIn.WaveFormat, 0);
         // await using var audioOut =
         //     new AudioOutChannel(WaveFormat.CreateIeeeFloatWaveFormat(wasapiOut.OutputWaveFormat.SampleRate, 1));
@@ -534,8 +536,7 @@ public static class CommandTask
         // var playTask = Audio.PlayAsync(wasapiOut, cts.Source.Token);
         var playTask = Audio.PlayAsync(asio, cts.Source.Token);
 
-        var preamble =
-            new ChirpPreamble<float>(Program.chirpOption with { SampleRate = 48000 });
+        var preamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = 48000 });
         // var preamble =
         //     new ChirpPreamble<float>(Program.chirpOption with { SampleRate = wasapiIn.WaveFormat.SampleRate });
 
@@ -552,7 +553,7 @@ public static class CommandTask
             new PreambleDetection<float>(
                 preamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
             ),
-            new CarrierQuietSensor1<float>(0.5f),
+            new CarrierQuietSensor<float>(0.5f),
             addressSource
         );
 
@@ -591,6 +592,251 @@ public static class CommandTask
         // var inStream = pipeRec.Writer.AsStream();
         // wasapiIn.DataAvailable += (s, e) => inStream.Write(e.Buffer, 0, e.BytesRecorded);
     }
+    static readonly Guid[] guids =
+        [new("8D2D7623-926F-BCCF-0DA8-D5AFAF4C1B27"), new("2C83A46F-1AF2-85D9-DB52-DFBF0D26B629")];
+    public static async Task DummyAdapterTaskAsync(bool loopBack, string adapterName, int guidIndex)
+    {
+
+        using var adapter = Adapter.Create(adapterName, adapterName, guids[guidIndex]);
+        using var session = adapter.StartSession(0x40000);
+        var rx = Channel.CreateUnbounded<byte[]>();
+        var tx = Channel.CreateUnbounded<byte[]>();
+
+        Logger.SetCallback((level, ts, message) => Console.WriteLine($"{level} {ts}: {message}"));
+
+        void Run()
+        {
+            WinTun.Packet packet = default;
+            while (true)
+            {
+                // session.WaitForRead
+                if (session.ReceivePacket(out packet))
+                {
+                    // for (var i = 0; i < packet.Span.Length; i++)
+                    // {
+                    //     Console.Write($"{packet.Span[i]:X2} ");
+                    // }
+                    // Console.WriteLine();
+                    Console.WriteLine();
+                    var ipPacket = new IPv4Packet(new(packet.Span.ToArray()));
+                    Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+                    if (loopBack)
+                    {
+                        session.AllocateSendPacket((uint)packet.Span.Length, out var send);
+                        packet.Span.CopyTo(send.Span);
+                        session.SendPacket(send);
+                    }
+                    session.ReleaseReceivePacket(packet);
+                }
+                else
+                {
+                    session.WaitForRead(TimeSpan.MaxValue);
+                }
+            }
+            // session.GetReadWaitEvent()
+        }
+        await Task.Run(Run);
+    }
+
+    public static async Task
+    AdapterTaskAsync(byte addressSource, byte addressDest, int render, int capture, string adapterName, int guidIndex)
+    {
+        using var adapter = Adapter.Create(adapterName, adapterName, guids[guidIndex]);
+        using var session = adapter.StartSession(0x40000);
+        var rx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
+        var tx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
+        using var cts = new CancelKeyPressCancellationTokenSource(new());
+
+        async Task TunRxDaemonAsync()
+        {
+            WinTun.Packet packet = default;
+            while (true)
+            {
+                // session.WaitForRead
+                if (session.ReceivePacket(out packet))
+                {
+                    // for (var i = 0; i < packet.Span.Length; i++)
+                    // {
+                    //     Console.Write($"{packet.Span[i]:X2} ");
+                    // }
+                    // Console.WriteLine();
+                    Console.WriteLine();
+                    var packetArr = packet.Span.ToArray();
+                    var ipPacket = new IPv4Packet(new(packetArr));
+                    Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+                    // rx.TryWrite(packetArr);
+                    await rx.Writer.WriteAsync(new(packetArr), cts.Source.Token);
+                    session.ReleaseReceivePacket(packet);
+                }
+                else
+                {
+                    session.WaitForRead(TimeSpan.MaxValue);
+                }
+            }
+        }
+
+        async Task TunTxDaemonAsync()
+        {
+            await foreach (var data in tx.Reader.ReadAllAsync(cts.Source.Token))
+            {
+                session.AllocateSendPacket((uint)data.Length, out var send);
+                data.CopyTo(send.Span);
+                session.SendPacket(send);
+            }
+        }
+        // Console.WriteLine(wasapiIn.WaveFormat.SampleRate);
+        // Console.WriteLine(wasapiOut.OutputWaveFormat.SampleRate);
+#if ASIO
+        using var asio = new AsioOut() { ChannelOffset = render, InputChannelOffset = capture };
+        var recordFormat = new WaveFormat(48000, 32, 1);
+        var playbackFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 1);
+
+        await using var audioIn = new AudioMonoInStream<float>(recordFormat, 0);
+        await using var audioOut = new AudioOutChannel(playbackFormat);
+
+        asio.InitRecordAndPlayback(audioOut.SampleProvider.ToWaveProvider(), 1, 48000);
+        asio.AudioAvailable += audioIn.DataAvailable;
+        var audioTask = Audio.PlayAsync(asio, cts.Source.Token);
+#else
+        using var player = Audio.GetWASAPIDevice(render, DataFlow.Render);
+        using var recorder = Audio.GetWASAPIDevice(capture, DataFlow.Capture);
+
+        // using var wasapiIn = new WasapiLoopbackCapture();
+        using var wasapiIn = new WasapiCapture(recorder, true, 0);
+        using var wasapiOut = new WasapiOut(player, AudioClientShareMode.Shared, true, 0);
+
+        var recordFormat = wasapiIn.WaveFormat;
+        var playbackFormat = WaveFormat.CreateIeeeFloatWaveFormat(wasapiOut.OutputWaveFormat.SampleRate, 1);
+        await using var audioIn = new AudioMonoInStream<float>(recordFormat, 0);
+        await using var audioOut = new AudioOutChannel(playbackFormat);
+
+        wasapiIn.DataAvailable += audioIn.DataAvailable;
+        wasapiOut.Init(audioOut.SampleProvider.ToWaveProvider());
+
+        var audioTask =
+            Task.WhenAll(Audio.RecordAsync(wasapiIn, cts.Source.Token), Audio.PlayAsync(wasapiOut, cts.Source.Token));
+#endif
+
+        var preamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = recordFormat.SampleRate });
+        // var preamble =
+        //     new ChirpPreamble<float>(Program.chirpOption with { SampleRate = wasapiIn.WaveFormat.SampleRate });
+
+        var symbol = new LineSymbol<float>(Program.lineOption);
+        var demodulator = new Demodulator<LineSymbol<float>, float, byte>(symbol, 255);
+        var modulator = new Modulator<ChirpPreamble<float>, LineSymbol<float>>(preamble, symbol);
+
+        await using var phyDuplex = new CSMAPhy<float>(
+            audioIn,
+            audioOut,
+            demodulator,
+            modulator,
+            new PreambleDetection<float>(
+                preamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
+            ),
+            new CarrierQuietSensor<float>(0.5f),
+            addressSource
+        );
+
+        await using var mac = new MacD(phyDuplex, phyDuplex, addressSource, addressDest, 1, 32);
+
+        async Task FillTxAsync()
+        {
+            await foreach (var packet in tx.Reader.ReadAllAsync(cts.Source.Token))
+            {
+                await mac.WriteAsync(packet, cts.Source.Token);
+            }
+        }
+
+        async Task FillRxAsync()
+        {
+            while (true)
+            {
+                var packet = await mac.ReadAsync(cts.Source.Token);
+                if (packet.IsEmpty)
+                    break;
+                await rx.Writer.WriteAsync(packet, cts.Source.Token);
+            }
+        }
+
+        // if (send is not null)
+        // {
+        //     // wasapiIn.DataAvailable += (s, e) =>
+        //     // {
+        //     //     wave.Write(e.Buffer, 0, e.BytesRecorded);
+        //     // };
+        //     var index = 0;
+        //     await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 128, binaryTxt, cts.Source.Token))
+        //     {
+        //         await mac.WriteAsync(new ReadOnlySequence<byte>(packet).IDEncode<byte>(index++), cts.Source.Token);
+        //         // await Task.Delay(200);
+        //     }
+        // }
+        // await foreach(var x in mac.)
+
+        await Task.WhenAll(
+            FillTxAsync(), FillRxAsync(), audioTask, Task.Run(TunRxDaemonAsync), Task.Run(TunTxDaemonAsync)
+        );
+    }
+
+    public static async Task HotSpotTaskAsync(string? profileName)
+    {
+        if (profileName is null)
+        {
+
+            foreach (var x in Windows.Networking.Connectivity.NetworkInformation.GetConnectionProfiles())
+            {
+                Console.WriteLine(x.ProfileName);
+            }
+            return;
+        }
+        var profile = Windows.Networking.Connectivity.NetworkInformation.GetConnectionProfiles().First(
+            x => x.ProfileName == profileName
+        );
+        await Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager.CreateFromConnectionProfile(profile)
+            .StartTetheringAsync();
+    }
+
+    // public static async Task AdapterTask2Async()
+    // {
+
+    //     using var adapter = Adapter.Create("Athernet", "Athernet", new("8D2D7623-926F-BCCF-0DA8-D5AFAF7C1B27"));
+    //     // var adapter = Adapter.Open("Athernet");
+    //     using var session = adapter.StartSession(0x40000);
+    //     var rx = Channel.CreateUnbounded<byte[]>();
+    //     var tx = Channel.CreateUnbounded<byte[]>();
+
+    //     Logger.SetCallback((level, ts, message) => Console.WriteLine($"{level} {ts}: {message}"));
+
+    //     void Run()
+    //     {
+    //         WinTun.Packet packet = default;
+    //         while (true)
+    //         {
+    //             // session.WaitForRead
+    //             if (session.ReceivePacket(out packet))
+    //             {
+    //                 // for (var i = 0; i < packet.Span.Length; i++)
+    //                 // {
+    //                 //     Console.Write($"{packet.Span[i]:X2} ");
+    //                 // }
+    //                 // Console.WriteLine();
+    //                 Console.WriteLine();
+    //                 var ipPacket = new IPv4Packet(new(packet.Span.ToArray()));
+    //                 Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+    //                 session.SendPacket(packet);
+    //                 session.ReleaseReceivePacket(packet);
+
+    //             }
+    //             else
+    //             {
+    //                 session.WaitForRead(TimeSpan.MaxValue);
+    //             }
+
+    //         }
+    //         // session.GetReadWaitEvent()
+    //     }
+    //     await Task.Run(Run);
+    // }
 }
 
 public static class CommandBuilder
@@ -638,12 +884,12 @@ public static class CommandBuilder
     {
         var command = new Command("send", "send data");
 
-        var fileArgument = new Argument<FileInfo?>(name: "input",
+        var fileArgument = new Argument < FileInfo ? > (name: "input",
                                                         description: "The file path to save",
                                                         parse: result => FileHelper.ParseSingleFileInfo(result));
 
         var toWavOption =
-            new Option<FileInfo?>(name: "--to-wav",
+            new Option < FileInfo ? > (name: "--to-wav",
                                        description: "Export audio data to wav file",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, false));
@@ -669,12 +915,12 @@ public static class CommandBuilder
         var command = new Command("receive", "receive data");
 
         var fileOption =
-            new Option<FileInfo?>(name: "--file",
+            new Option < FileInfo ? > (name: "--file",
                                        description: "The file path to save, otherwise stdout",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, false));
 
-        var fromWavOption = new Option<FileInfo?>(name: "--from-wav",
+        var fromWavOption = new Option < FileInfo ? > (name: "--from-wav",
                                                        description: "Import audio data from wav file",
                                                        isDefault: true,
                                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result));
@@ -707,13 +953,13 @@ public static class CommandBuilder
             new Argument<byte>(name: "dest", description: "The mac address to send", getDefaultValue: () => 1);
 
         var fileSendOption =
-            new Option<FileInfo?>(name: "--file-send",
+            new Option < FileInfo ? > (name: "--file-send",
                                        description: "The file path to send data",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, true));
 
         var fileReceiveOption =
-            new Option<FileInfo?>(name: "--file-receive",
+            new Option < FileInfo ? > (name: "--file-receive",
                                        description: "The file path to save received data, otherwise stdout",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, false));
@@ -770,6 +1016,73 @@ public static class CommandBuilder
                 Audio.ListWASAPIDevices();
             }
         );
+
+        return command;
+    }
+
+    public static Command DummyAdapterCommand()
+    {
+        var command = new Command("dummy-adapter", "Run an dummy adapter");
+
+        var addressSourceArgument =
+            new Argument<byte>(name: "source", description: "The mac address", getDefaultValue: () => 0);
+
+        var addressDestArgument =
+            new Argument<byte>(name: "dest", description: "The mac address to send", getDefaultValue: () => 1);
+
+        var txOption =
+            new Option<int>(name: "--render", description: "Name of rendering device to use", getDefaultValue: () => 0);
+
+        var rxOption = new Option<int>(
+            name: "--capture", description: "Name of capturing device to use", getDefaultValue: () => 0
+        );
+
+        var adapterNameOption = new Option<string>(
+            name: "--name", description: "The adapter name to use", getDefaultValue: () => "Athernet"
+        );
+
+        var guidIndexOption =
+            new Option<int>(name: "--guid", description: "The guid index to use", getDefaultValue: () => 0);
+
+        command.AddOption(loopBackOption);
+        command.AddOption(adapterNameOption);
+        command.AddOption(guidIndexOption);
+        command.SetHandler(CommandTask.DummyAdapterTaskAsync, loopBackOption, adapterNameOption, guidIndexOption);
+
+        return command;
+    }
+
+    public static Command AdapterCommand()
+    {
+        var command = new Command("adapter", "Run an dummy adapter");
+
+        var loopBackOption =
+            new Option<bool>(name: "--loopback", description: "Use loopback adapter", getDefaultValue: () => false);
+
+        var adapterNameOption = new Option<string>(
+            name: "--name", description: "The adapter name to use", getDefaultValue: () => "Athernet"
+        );
+
+        var guidIndexOption =
+            new Option<int>(name: "--guid", description: "The guid index to use", getDefaultValue: () => 0);
+
+        command.AddOption(loopBackOption);
+        command.AddOption(adapterNameOption);
+        command.AddOption(guidIndexOption);
+        command.SetHandler(CommandTask.DummyAdapterTaskAsync, loopBackOption, adapterNameOption, guidIndexOption);
+
+        return command;
+    }
+
+    public static Command HotSpotCommand()
+    {
+        var command = new Command("hotspot", "Run an adapter");
+
+        var profileOption = new Option < string
+            ? > (name: "--profile", description: "The profile name to start hotspot", getDefaultValue: () => null);
+
+        command.AddOption(profileOption);
+        command.SetHandler(CommandTask.HotSpotTaskAsync, profileOption);
 
         return command;
     }

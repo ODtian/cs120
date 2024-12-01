@@ -638,7 +638,7 @@ public class CSMAPhy<TSample>
             //         // samplesIn.AdvanceTo(seq.Start);
             //     }
             // }
-            // await quietTrigger.WaitAsync(linked.Token);
+            await quietTrigger.WaitAsync(linked.Token);
 
             // var writer = new ArrayBufferWriter<TSample>();
             modulator.TryRead(ref data, sequence);

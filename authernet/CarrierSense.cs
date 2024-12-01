@@ -10,7 +10,7 @@ using NAudio.Wave;
 
 namespace CS120.CarrierSense;
 
-public class CarrierSensor
+public class CarrierSensorx
 (PipeReader pipeReader, WaveFormat waveFormat, int senseSamples = 220, float senseThreshold = 0.05f) : IPipeAdvance
 {
     private readonly PipeViewProvider sampleBuffer = new(waveFormat, pipeReader);
@@ -40,7 +40,7 @@ public class CarrierSensor
     }
 }
 
-public class CarrierQuietSensor1<TSample>(float threshold = 0.05f) : ISequnceSearcher<TSample>
+public class CarrierQuietSensor<TSample>(float threshold = 0.05f) : ISequnceSearcher<TSample>
     where TSample : INumber<TSample>
 {
     private readonly TSample threshold = TSample.CreateChecked(threshold);
