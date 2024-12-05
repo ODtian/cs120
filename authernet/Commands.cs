@@ -23,6 +23,7 @@ using PacketDotNet;
 using System.Net;
 using System.CommandLine.Invocation;
 using CS120.Utils.Extension;
+using CommunityToolkit.HighPerformance;
 namespace CS120.Commands;
 
 public static class CommandTask
@@ -565,14 +566,17 @@ public static class CommandTask
         // var warmup = new WarmupPreamble<DPSKSymbol<float>, float>(symbol, 2000);
         // await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
         // await Task.Delay(500);
-        // using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", wasapiIn.WaveFormat);
+        using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", playbackFormat);
         // using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", wasapiIn.WaveFormat);
         if (send is not null)
         {
-            // wasapiIn.DataAvailable += (s, e) =>
-            // {
-            //     wave.Write(e.Buffer, 0, e.BytesRecorded);
-            // };
+            var buf = new float[2048];
+            asio.AudioAvailable += (s, e) =>
+            {
+                var size = e.GetAsInterleavedSamples(buf);
+                wave.Write(buf.AsSpan(0, size).AsBytes());
+            };
+            // { wave.Write(e.Buffer, 0, e.BytesRecorded); };
             var index = 0;
             await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 128, binaryTxt, cts.Source.Token))
             {
@@ -681,8 +685,8 @@ public static class CommandTask
         {
             await foreach (var data in tx.Reader.ReadAllAsync(cts.Source.Token))
             {
-                var ipPacket = new IPv4Packet(new(data.ToArray()));
-                Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+                // var ipPacket = new IPv4Packet(new(data.ToArray()));
+                // Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
                 foreach (var b in data.GetElements())
                     Console.Write($"{b:X2} ");
                 session.AllocateSendPacket((uint)data.Length, out var send);
