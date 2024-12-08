@@ -690,7 +690,8 @@ public class CSMAPhy<TSample>
             var x = seq.Slice(originalLength);
             quiet = !carrierSensor.TrySearch(ref x);
             // Console.WriteLine(quiet);
-            if (quiet && new Random().NextSingle() < 0.5)
+            // if (quiet && new Random().NextSingle() < 0.5)
+            if (quiet)
                 quietTrigger.Signal();
             // if (carrierSensor.TrySearch(ref seq) == quiet)
             // {

@@ -161,6 +161,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
 
     // private readonly Channel<WindowItem> channelPending = Channel.CreateUnbounded<WindowItem>();
     private readonly Channel<ReadOnlySequence<byte>> channelRx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
+    private readonly Channel<ReadOnlySequence<byte>> inChannelBase = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
     // private readonly Channel<ReadOnlySequence<byte>> channelTx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
 
     // private readonly AsyncExclusiveLock sendLock = new();
@@ -261,10 +262,17 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             }
             catch (TimeoutException)
             {
-                tries = random.NextSingle() * 0.5f + 0.5f;
+                // tries = random.NextSingle() * 0.5f + 0.5f;
+                tries = new Random().NextSingle() * 0.5f + 0.5f;
                 // tries += random.NextSingle() * 0.5f + 0.5f;
             }
-        } while (retry++ < 10);
+        } while (retry++ < 3);
+
+        await inChannelBase.Writer.WriteAsync(
+            new ReadOnlySequence<byte>([]).MacEncode(new(
+            ) { Source = to, Dest = from, Type = MacFrame.FrameType.Ack, SequenceNumber = (byte)slot }),
+            ct
+        );
     }
 
     public ValueTask CompleteAsync(Exception? exception) => outChannel.CompleteAsync(exception);
@@ -294,39 +302,46 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             }
         }
     }
-    private async Task HandleReceiveAsync()
+    private async Task FillChannel()
     {
-        var quiet = new byte[0];
         while (true)
         {
             var packet = await inChannel.ReadAsync(cts.Token);
-
             if (packet.IsEmpty)
             {
+                inChannelBase.Writer.TryComplete();
                 break;
             }
-
-            packet = packet.MacDecode(out var mac);
-            if (mac.Dest == from)
+            await inChannelBase.Writer.WriteAsync(packet);
+        }
+    }
+    private async Task HandleReceiveAsync()
+    {
+        _ = FillChannel();
+        // var quiet = new byte[0];
+        await foreach (var packet in inChannelBase.Reader.ReadAllAsync(cts.Token))
+        {
+            var payload = packet.MacDecode(out var header);
+            if (header.Dest == from)
             {
-                if (mac.Type is MacFrame.FrameType.Data)
+                if (header.Type is MacFrame.FrameType.Data)
                 {
-                    Console.WriteLine($"Receive Data {mac.SequenceNumber}");
+                    Console.WriteLine($"Receive Data {header.SequenceNumber}");
                     var ts = DateTime.Now;
                     _ = outChannel
                             .WriteAsync(
-                                new ReadOnlySequence<byte>(quiet).MacEncode(new(
-                                ) { Source = mac.Dest,
-                                    Dest = mac.Source,
+                                new ReadOnlySequence<byte>([]).MacEncode(new(
+                                ) { Source = header.Dest,
+                                    Dest = header.Source,
                                     Type = MacFrame.FrameType.Ack,
-                                    SequenceNumber = mac.SequenceNumber }),
+                                    SequenceNumber = header.SequenceNumber }),
                                 cts.Token
                             )
                             .AsTask();
-                    // Console.WriteLine($"Ack {mac.SequenceNumber} {(DateTime.Now - ts).TotalMilliseconds}");
-                    receivedDataCache[mac.SequenceNumber] = packet;
+                    // Console.WriteLine($"Ack {frame.SequenceNumber} {(DateTime.Now - ts).TotalMilliseconds}");
+                    receivedDataCache[header.SequenceNumber] = payload;
 
-                    if (mac.SequenceNumber == NextDataNumber)
+                    if (header.SequenceNumber == NextDataNumber)
                     {
                         while (receivedDataCache.ContainsKey(NextDataNumber))
                         {
@@ -336,15 +351,15 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                         }
                     }
                 }
-                else if (mac.Type is MacFrame.FrameType.Ack)
+                else if (header.Type is MacFrame.FrameType.Ack)
                 {
-                    Console.WriteLine($"Receive Ack {mac.SequenceNumber}");
+                    Console.WriteLine($"Receive Ack {header.SequenceNumber}");
                     // ackSource.Complete(mac.SequenceNumber);
-                    ackSource.Pulse(mac.SequenceNumber, null);
+                    ackSource.Pulse(header.SequenceNumber, null);
                     // receivedAckCache.Add(mac.SequenceNumber);
-                    receivedAckCache[mac.SequenceNumber] = new();
+                    receivedAckCache[header.SequenceNumber] = new();
 
-                    if (mac.SequenceNumber == NextAckNumber)
+                    if (header.SequenceNumber == NextAckNumber)
                     {
                         while (receivedAckCache.ContainsKey(NextAckNumber))
                         {
@@ -356,6 +371,65 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                 }
             }
         }
+        // while (true)
+        // {
+        //     var packet = await inChannel.ReadAsync(cts.Token);
+
+        //     if (packet.IsEmpty)
+        //     {
+        //         break;
+        //     }
+
+        //     packet = packet.MacDecode(out var mac);
+        //     if (mac.Dest == from)
+        //     {
+        //         if (mac.Type is MacFrame.FrameType.Data)
+        //         {
+        //             Console.WriteLine($"Receive Data {mac.SequenceNumber}");
+        //             var ts = DateTime.Now;
+        //             _ = outChannel
+        //                     .WriteAsync(
+        //                         new ReadOnlySequence<byte>([]).MacEncode(new(
+        //                         ) { Source = mac.Dest,
+        //                             Dest = mac.Source,
+        //                             Type = MacFrame.FrameType.Ack,
+        //                             SequenceNumber = mac.SequenceNumber }),
+        //                         cts.Token
+        //                     )
+        //                     .AsTask();
+        //             // Console.WriteLine($"Ack {mac.SequenceNumber} {(DateTime.Now - ts).TotalMilliseconds}");
+        //             receivedDataCache[mac.SequenceNumber] = packet;
+
+        //             if (mac.SequenceNumber == NextDataNumber)
+        //             {
+        //                 while (receivedDataCache.ContainsKey(NextDataNumber))
+        //                 {
+        //                     RxWriter.TryWrite(receivedDataCache[NextDataNumber]);
+        //                     receivedDataCache.Remove(NextDataNumber);
+        //                     LastDataReceived = NextDataNumber;
+        //                 }
+        //             }
+        //         }
+        //         else if (mac.Type is MacFrame.FrameType.Ack)
+        //         {
+        //             Console.WriteLine($"Receive Ack {mac.SequenceNumber}");
+        //             // ackSource.Complete(mac.SequenceNumber);
+        //             ackSource.Pulse(mac.SequenceNumber, null);
+        //             // receivedAckCache.Add(mac.SequenceNumber);
+        //             receivedAckCache[mac.SequenceNumber] = new();
+
+        //             if (mac.SequenceNumber == NextAckNumber)
+        //             {
+        //                 while (receivedAckCache.ContainsKey(NextAckNumber))
+        //                 {
+        //                     receivedAckCache.Remove(NextAckNumber);
+        //                     LastAckReceived = NextAckNumber;
+        //                     windowSlotChannel.Writer.TryWrite(LastDataSend);
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
     }
 
     // private async Task PendingHandleAsync()

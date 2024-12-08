@@ -1,4 +1,4 @@
-// #define ASIO
+#define ASIO
 
 using System.CommandLine;
 using System.IO.Pipelines;
@@ -703,8 +703,8 @@ public static class CommandTask
             {
                 // var ipPacket = new IPv4Packet(new(data.ToArray()));
                 // Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
-                foreach (var b in data.GetElements())
-                    Console.Write($"{b:X2} ");
+                // foreach (var b in data.GetElements())
+                //     Console.Write($"{b:X2} ");
                 session.AllocateSendPacket((uint)data.Length, out var send);
                 data.CopyTo(send.Span);
                 session.SendPacket(send);
@@ -764,27 +764,30 @@ public static class CommandTask
         );
 
         await using var mac = new MacD(phyDuplex, phyDuplex, addressSource, addressDest, 1, 32);
-
+        
+        var warmup = new WarmupPreamble<LineSymbol<float>, float>(symbol, 2000);
+        await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
+        await Task.Delay(500);
+        
         async Task FillTxAsync()
         {
-
-            // await foreach (var packet in rx.Reader.ReadAllAsync(cts.Source.Token))
-            // {
-            //     await mac.WriteAsync(packet, cts.Source.Token);
-            // }
+            await foreach (var packet in rx.Reader.ReadAllAsync(cts.Source.Token))
+            {
+                await mac.WriteAsync(packet, cts.Source.Token);
+            }
         }
 
         async Task FillRxAsync()
         {
-            // while (true)
-            // {
-            //     var packet = await mac.ReadAsync(cts.Source.Token);
-            //     Console.WriteLine(packet.ToArray().Length);
-            //     if (packet.IsEmpty)
-            //         break;
-            //     await tx.Writer.WriteAsync(packet, cts.Source.Token);
-            //     Console.WriteLine("Rx");
-            // }
+            while (true)
+            {
+                var packet = await mac.ReadAsync(cts.Source.Token);
+                Console.WriteLine(packet.ToArray().Length);
+                if (packet.IsEmpty)
+                    break;
+                await tx.Writer.WriteAsync(packet, cts.Source.Token);
+                Console.WriteLine("Rx");
+            }
         }
 
         await Task.WhenAll(
