@@ -16,8 +16,8 @@ namespace CS120.Symbol;
 //     float[][] Symbols { get; }
 //     // public static abstract float[][] Get(TOption symbolOption);
 // }
-public interface ISymbol<T> where T : INumber<T>
-{
+public interface ISymbol<T>
+    where T : INumber<T> {
     ReadOnlyMemory<ReadOnlyMemory<T>> Samples { get; }
     int NumSamplesPerSymbol { get; }
     // public static abstract float[][] Get(TOption symbolOption);
@@ -29,7 +29,8 @@ public readonly record struct ChirpSymbolOption
     public int NumSamplesPerSymbol => (int)(Duration * SampleRate);
 }
 
-public readonly struct ChirpSymbol<T> : ISymbol<T> where T : INumber<T>
+public readonly struct ChirpSymbol<T> : ISymbol<T>
+    where T : INumber<T>
 {
     public ReadOnlyMemory<ReadOnlyMemory<T>> Samples { get; }
     public int NumSamplesPerSymbol { get; }
@@ -63,7 +64,8 @@ public readonly record struct DPSKSymbolOption
     public int NumSamplesPerSymbol => (int)(SampleRate / Freq * NumRedundant);
 }
 
-public readonly struct DPSKSymbol<T> : ISymbol<T> where T : INumber<T>
+public readonly struct DPSKSymbol<T> : ISymbol<T>
+    where T : INumber<T>
 {
     public ReadOnlyMemory<ReadOnlyMemory<T>> Samples { get; }
     public int NumSamplesPerSymbol { get; }
@@ -92,10 +94,13 @@ public readonly struct DPSKSymbol<T> : ISymbol<T> where T : INumber<T>
     public static implicit operator DPSKSymbol<T>(DPSKSymbolOption option) => new(option);
 }
 
-public readonly record struct LineSymbolOption(int NumSymbols, int NumSamplesPerSymbol)
-{ }
+public readonly record struct LineSymbolOption
+(int NumSymbols, int NumSamplesPerSymbol)
+{
+}
 
-public readonly struct LineSymbol<T> : ISymbol<T> where T : INumber<T>
+public readonly struct LineSymbol<T> : ISymbol<T>
+    where T : INumber<T>
 {
     public ReadOnlyMemory<ReadOnlyMemory<T>> Samples { get; }
     public int NumSamplesPerSymbol { get; }
@@ -105,11 +110,9 @@ public readonly struct LineSymbol<T> : ISymbol<T> where T : INumber<T>
 
         var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
 
-
         var zero = new T[symbolOption.NumSamplesPerSymbol];
         zero.AsSpan().Fill(T.CreateChecked(-1));
         result[0] = zero;
-
 
         var one = new T[symbolOption.NumSamplesPerSymbol];
         one.AsSpan().Fill(T.CreateChecked(1));

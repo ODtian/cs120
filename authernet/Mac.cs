@@ -119,6 +119,10 @@ public struct MacFrame
 
 public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
 {
+    readonly struct Void
+    {
+        static readonly Void Value = new();
+    }
     // readonly struct MacTask
     // (bool isSend, bool isAck, int sequenceNumber, ReadOnlySequence<byte> data)
     // {
@@ -161,7 +165,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
 
     // private readonly Channel<WindowItem> channelPending = Channel.CreateUnbounded<WindowItem>();
     private readonly Channel<ReadOnlySequence<byte>> channelRx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
-    private readonly Channel<ReadOnlySequence<byte>> inChannelBase = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
+    private readonly Channel<ReadOnlySequence<byte>> channelRxRaw = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
     // private readonly Channel<ReadOnlySequence<byte>> channelTx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
 
     // private readonly AsyncExclusiveLock sendLock = new();
@@ -169,14 +173,14 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     private readonly Channel<int> windowSlotChannel = Channel.CreateUnbounded<int>();
 
     // private readonly List<int> receivedAckCache = [];
-    private readonly Dictionary<int, Void> receivedAckCache = [];
-    private readonly Dictionary<int, ReadOnlySequence<byte>> receivedDataCache = [];
+
+    private readonly bool[] receivedAckCache;
+    private readonly ReadOnlySequence<byte>[] receivedDataCache;
+    // private readonly Dictionary<int, bool> receivedAckCache = [];
+    // private readonly Dictionary<int, ReadOnlySequence<byte>> receivedDataCache = [];
     // private readonly PriorityQueue<int, int> ackSource;
     // private readonly Stack
-    struct Void
-    {
-    }
-    private readonly AsyncCorrelationSource<int, Exception?> ackSource;
+    private readonly AsyncCorrelationSource<int, object?> ackSource;
     // public async ValueTask WriteAsync(ReadOnlySequence<byte> data, CancellationToken ct)
     // {
     //     var tcs = new TaskCompletionSource();
@@ -189,11 +193,12 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     private readonly CancellationTokenSource cts = new();
     private int LastAckReceived { get; set; } = -1;
     private int LastDataReceived { get; set; } = -1;
-    private int NextDataNumber => (LastDataReceived + 1) % sequenceSize;
+    private int ToSequnceNumber(int index) => index % sequenceSize;
+    private int NextDataNumber => ToSequnceNumber(LastDataReceived + 1);
     // private int NextAck(int ack) => (ack + 1) % sequenceSize;
 
-    private int NextAckNumber => (LastAckReceived + 1) % sequenceSize;
-    private int LastDataSend => (LastAckReceived + windowSize) % sequenceSize;
+    private int NextAckNumber => ToSequnceNumber(LastAckReceived + 1);
+    private int LastDataSend => ToSequnceNumber(LastAckReceived + windowSize);
     private ChannelReader<ReadOnlySequence<byte>> RxReader => channelRx.Reader;
     private ChannelWriter<ReadOnlySequence<byte>> RxWriter => channelRx.Writer;
     private Random random;
@@ -219,7 +224,11 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         random = new(from);
         factor = random.NextSingle() * 0.5f + 0.5f;
         Console.WriteLine($"Factor: {factor}");
+
         ackSource = new(windowSize);
+        receivedAckCache = Enumerable.Repeat(false, sequenceSize).ToArray();
+        receivedDataCache = Enumerable.Repeat(ReadOnlySequence<byte>.Empty, sequenceSize).ToArray();
+
         receiveTask = RunHandleReceiveAsync();
 
         foreach (var seq in Enumerable.Range(0, windowSize))
@@ -254,10 +263,8 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             Console.WriteLine($"Send {slot}");
             try
             {
-                var exception = await task.WaitAsync(TimeSpan.FromMilliseconds(500) * tries, ct);
-                // var exception = await task.WaitAsync(TimeSpan.FromMilliseconds(2000), ct);
-                if (exception is not null)
-                    throw exception;
+                await task.WaitAsync(TimeSpan.FromMilliseconds(500) * tries, ct);
+                // var exception = await task.WaitAsync(TimeSpan.FromMilliseconds(2000), ct);;
                 // break;
                 return;
             }
@@ -269,7 +276,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             }
         } while (retry++ < 1000000);
 
-        await inChannelBase.Writer.WriteAsync(
+        await channelRxRaw.Writer.WriteAsync(
             new ReadOnlySequence<byte>([]).MacEncode(new(
             ) { Source = to, Dest = from, Type = MacFrame.FrameType.Ack, SequenceNumber = (byte)slot }),
             ct
@@ -303,24 +310,29 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             }
         }
     }
-    private async Task FillChannel()
+    private async Task FillChannelAsync()
     {
         while (true)
         {
             var packet = await inChannel.ReadAsync(cts.Token);
             if (packet.IsEmpty)
             {
-                inChannelBase.Writer.TryComplete();
+                channelRxRaw.Writer.TryComplete();
                 break;
             }
-            await inChannelBase.Writer.WriteAsync(packet);
+            await channelRxRaw.Writer.WriteAsync(packet);
         }
+    }
+
+    private bool ValueInWindowRange(int windowStart, int val)
+    {
+        return Enumerable.Range(windowStart, windowSize).Any(v => ToSequnceNumber(v) == val);
     }
     private async Task HandleReceiveAsync()
     {
-        _ = FillChannel();
+        _ = FillChannelAsync();
         // var quiet = new byte[0];
-        await foreach (var packet in inChannelBase.Reader.ReadAllAsync(cts.Token))
+        await foreach (var packet in channelRxRaw.Reader.ReadAllAsync(cts.Token))
         {
             var payload = packet.MacDecode(out var header);
             if (header.Dest == from)
@@ -339,17 +351,25 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                                 cts.Token
                             )
                             .AsTask();
-                    // Console.WriteLine($"Ack {frame.SequenceNumber} {(DateTime.Now - ts).TotalMilliseconds}");
-                    receivedDataCache[header.SequenceNumber] = payload;
+
+                    if (ValueInWindowRange(NextDataNumber, header.SequenceNumber))
+                        // Console.WriteLine($"Ack {frame.SequenceNumber} {(DateTime.Now - ts).TotalMilliseconds}");
+                        receivedDataCache[header.SequenceNumber] = payload;
 
                     if (header.SequenceNumber == NextDataNumber)
                     {
-                        while (receivedDataCache.ContainsKey(NextDataNumber))
+                        while (!receivedDataCache[NextDataNumber].IsEmpty)
                         {
-                            RxWriter.TryWrite(receivedDataCache[NextDataNumber]);
-                            receivedDataCache.Remove(NextDataNumber);
+                            await RxWriter.WriteAsync(receivedDataCache[NextDataNumber]);
+                            receivedDataCache[NextDataNumber] = ReadOnlySequence<byte>.Empty;
                             LastDataReceived = NextDataNumber;
                         }
+                        // while (receivedDataCache.ContainsKey(NextDataNumber))
+                        // {
+                        //     RxWriter.TryWrite(receivedDataCache[NextDataNumber]);
+                        //     receivedDataCache.Remove(NextDataNumber);
+                        //     LastDataReceived = NextDataNumber;
+                        // }
                     }
                 }
                 else if (header.Type is MacFrame.FrameType.Ack)
@@ -358,16 +378,26 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                     // ackSource.Complete(mac.SequenceNumber);
                     ackSource.Pulse(header.SequenceNumber, null);
                     // receivedAckCache.Add(mac.SequenceNumber);
-                    receivedAckCache[header.SequenceNumber] = new();
+                    if (ValueInWindowRange(NextAckNumber, header.SequenceNumber))
+                        receivedAckCache[header.SequenceNumber] = true;
 
                     if (header.SequenceNumber == NextAckNumber)
                     {
-                        while (receivedAckCache.ContainsKey(NextAckNumber))
+                        while (receivedAckCache[NextAckNumber])
                         {
-                            receivedAckCache.Remove(NextAckNumber);
+                            receivedAckCache[NextAckNumber] = false;
                             LastAckReceived = NextAckNumber;
                             windowSlotChannel.Writer.TryWrite(LastDataSend);
                         }
+                        // while (receivedAckCache.GetValueOrDefault(NextAckNumber, false))
+                        // {
+                        //     receivedAckCache[NextAckNumber] = false;
+                        // }
+                        // while (receivedAckCache.ContainsKey(NextAckNumber))
+                        // {
+                        //     receivedAckCache.Remove(NextAckNumber);
+                        //     LastAckReceived = NextAckNumber;
+                        // }
                     }
                 }
             }
