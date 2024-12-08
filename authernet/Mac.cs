@@ -267,7 +267,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                 tries = new Random().NextSingle() * 0.5f + 0.5f;
                 // tries += random.NextSingle() * 0.5f + 0.5f;
             }
-        } while (retry++ < 3);
+        } while (retry++ < 1000000);
 
         await inChannelBase.Writer.WriteAsync(
             new ReadOnlySequence<byte>([]).MacEncode(new(

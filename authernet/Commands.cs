@@ -701,8 +701,8 @@ public static class CommandTask
         {
             await foreach (var data in tx.Reader.ReadAllAsync(cts.Source.Token))
             {
-                // var ipPacket = new IPv4Packet(new(data.ToArray()));
-                // Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+                var ipPacket = new IPv4Packet(new(data.ToArray()));
+                Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
                 // foreach (var b in data.GetElements())
                 //     Console.Write($"{b:X2} ");
                 session.AllocateSendPacket((uint)data.Length, out var send);
@@ -764,12 +764,12 @@ public static class CommandTask
         );
 
         await using var mac = new MacD(phyDuplex, phyDuplex, addressSource, addressDest, 1, 32);
-        
+
         var warmup = new WarmupPreamble<LineSymbol<float>, float>(symbol, 2000);
         await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
         await Task.Delay(500);
-        
-        async Task FillTxAsync()
+
+        async Task FillRxAsync()
         {
             await foreach (var packet in rx.Reader.ReadAllAsync(cts.Source.Token))
             {
@@ -777,7 +777,7 @@ public static class CommandTask
             }
         }
 
-        async Task FillRxAsync()
+        async Task FillTxAsync()
         {
             while (true)
             {
