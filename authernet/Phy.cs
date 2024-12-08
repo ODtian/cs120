@@ -609,6 +609,7 @@ public class CSMAPhy<TSample>
 
     public async ValueTask WriteAsync(ReadOnlySequence<byte> data, CancellationToken ct)
     {
+        data = data.RSEncode(Program.eccNums).LengthEncode<byte>();
         Console.WriteLine("//// Send");
         foreach (var d in data.GetElements())
         {
@@ -616,7 +617,6 @@ public class CSMAPhy<TSample>
         }
         Console.WriteLine();
         Console.WriteLine("////");
-        data = data.RSEncode(Program.eccNums).LengthEncode<byte>();
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
 
         using (await sendLock.AcquireLockAsync(linked.Token))
@@ -719,20 +719,19 @@ public class CSMAPhy<TSample>
                 }
                 // Console.WriteLine(DateTime.Now - ts);
                 // await samplesOut.WriteAsync(new ReadOnlySequence<TSample>(buf), cts.Token);
-                var data = new ReadOnlySequence<byte>(writer.WrittenMemory)
-                               .LengthDecode<byte>(out var lengthValid)
-                               .RSDecode(Program.eccNums, out var eccValid);
+                var data = new ReadOnlySequence<byte>(writer.WrittenMemory);
                 Console.WriteLine("//// Receive");
                 foreach (var d in data.GetElements())
                 {
                     Console.Write($"{d:X2} ");
                 }
                 Console.WriteLine();
-                Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-                Console.WriteLine("////");
-                data.MacGet(out var mac);
+                // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+                var payload = data.LengthDecode<byte>(out var lengthValid).RSDecode(Program.eccNums, out var eccValid);
+                payload.MacGet(out var mac);
                 Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
                 Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
+                Console.WriteLine("////");
                 Console.WriteLine();
 
                 if (lengthValid && eccValid)
