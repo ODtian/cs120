@@ -258,7 +258,8 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                 // var exception = await task.WaitAsync(TimeSpan.FromMilliseconds(2000), ct);
                 if (exception is not null)
                     throw exception;
-                break;
+                // break;
+                return;
             }
             catch (TimeoutException)
             {
