@@ -684,11 +684,11 @@ public static class WaveReaderExtension
                 currentTask.Data.Slice(0, readed).CopyTo(buffer.AsSpan(offset, readed));
                 currentTask.Data = currentTask.Data.Slice(readed);
 
-                if (currentTask.Data.IsEmpty)
-                {
-                    // Console.WriteLine(currentTask.Task is null);
-                    currentTask.Task?.TrySetResult(true);
-                }
+                // if (currentTask.Data.IsEmpty)
+                // {
+                //     // Console.WriteLine(currentTask.Task is null);
+                //     currentTask.Task?.TrySetResult(true);
+                // }
                 // Console.WriteLine(readed);
                 // for (int i = 0; i < readed; i++)
                 // {

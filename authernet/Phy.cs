@@ -702,7 +702,6 @@ public class CSMAPhy<TSample>
 
             if (preambleDetection.TrySearch(ref seq))
             {
-                var ts = DateTime.Now;
                 samplesIn.AdvanceTo(seq.Start);
                 var writer = new ArrayBufferWriter<byte>();
                 while (!demodulator.TryRead(ref seq, writer))
@@ -717,7 +716,6 @@ public class CSMAPhy<TSample>
                     // if (quiet)
                     //     quietTrigger.Signal();
                     seq = result.Buffer;
-                    ts = DateTime.Now;
                 }
                 // Console.WriteLine(DateTime.Now - ts);
                 // await samplesOut.WriteAsync(new ReadOnlySequence<TSample>(buf), cts.Token);
