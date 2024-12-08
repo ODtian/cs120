@@ -47,7 +47,7 @@ class Program
 
     public static float corrThreshold = 0.4f;
     // public static int maxPeakFalling = chirpOption.NumSamplesPerSymbol / 2;
-    public static int maxPeakFalling = 0;
+    public static int maxPeakFalling = 12;
     public static float smoothedEnergyFactor = 1f / 64f;
 
     public static int eccNums = 2;

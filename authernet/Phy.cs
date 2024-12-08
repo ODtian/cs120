@@ -460,21 +460,21 @@ public class RXPhy<TSample> : IInChannel<ReadOnlySequence<byte>>, IAsyncDisposab
                                .LengthDecode<byte>(out var lengthValid)
                                .RSDecode(Program.eccNums, out var eccValid);
 
-                // Console.WriteLine("//// Receive");
-                // foreach (var d in data.GetElements())
-                // {
-                //     Console.Write($"{d:X2} ");
-                // }
-                // Console.WriteLine();
-                // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-                // Console.WriteLine("////");
+                Console.WriteLine("//// Receive");
+                foreach (var d in data.GetElements())
+                {
+                    Console.Write($"{d:X2} ");
+                }
+                Console.WriteLine();
+                Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+                Console.WriteLine("////");
 
                 if (lengthValid && eccValid)
                 {
                     await RxWriter.WriteAsync(data);
                 }
-                data.MacGet(out var mac);
-                Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
+                // data.MacGet(out var mac);
+                // Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
             }
             else if (result.IsCompleted)
                 return;
@@ -678,8 +678,8 @@ public class CSMAPhy<TSample>
 
     private async Task ProcessAsync()
     {
-        var buf = new TSample[480];
-        buf.AsSpan().Fill(TSample.One * TSample.CreateChecked(1));
+        // var buf = new TSample[480];
+        // buf.AsSpan().Fill(TSample.One * TSample.CreateChecked(1));
         ReadOnlySequence<TSample> seq = default;
         while (true)
         {
@@ -690,7 +690,7 @@ public class CSMAPhy<TSample>
             var x = seq.Slice(originalLength);
             quiet = !carrierSensor.TrySearch(ref x);
             // Console.WriteLine(quiet);
-            if (quiet)
+            if (quiet && new Random().NextSingle() < 0.5)
                 quietTrigger.Signal();
             // if (carrierSensor.TrySearch(ref seq) == quiet)
             // {
@@ -723,21 +723,22 @@ public class CSMAPhy<TSample>
                 var data = new ReadOnlySequence<byte>(writer.WrittenMemory)
                                .LengthDecode<byte>(out var lengthValid)
                                .RSDecode(Program.eccNums, out var eccValid);
-                // Console.WriteLine("//// Receive");
-                // foreach (var d in data.GetElements())
-                // {
-                //     Console.Write($"{d:X2} ");
-                // }
-                // Console.WriteLine();
-                // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-                // Console.WriteLine("////");
-                // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+                Console.WriteLine("//// Receive");
+                foreach (var d in data.GetElements())
+                {
+                    Console.Write($"{d:X2} ");
+                }
+                Console.WriteLine();
+                Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+                Console.WriteLine("////");
+                data.MacGet(out var mac);
+                Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+                Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
+                Console.WriteLine();
 
                 if (lengthValid && eccValid)
                 {
                     await RxWriter.WriteAsync(data);
-                    data.MacGet(out var mac);
-                    Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
                 }
             }
             else if (result.IsCompleted)

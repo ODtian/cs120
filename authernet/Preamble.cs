@@ -6,6 +6,7 @@ using CS120.Symbol;
 using CS120.Utils;
 using CS120.Utils.Extension;
 using CS120.Utils.Wave;
+using DotNext;
 using NAudio.Wave;
 
 namespace CS120.Preamble;
@@ -140,11 +141,86 @@ public class PreambleDetection<TSample>(
     : ISequnceSearcher<TSample>
     where TSample : INumber<TSample>
 {
+    // private int restNum = -1;
+    // private int
     private readonly int preambleLength = preamble.Samples.Length;
     private readonly TSample preambleLengthT = TSample.CreateChecked(preamble.Samples.Length);
     private readonly TSample corrThresholdT = TSample.CreateChecked(corrThreshold);
     // private readonly TSample smoothedEnergyFactorT = TSample.CreateChecked(smoothedEnergyFactor);
     public bool TrySearch(ref ReadOnlySequence<TSample> inSeq)
+    {
+        // if (restNum == -1 && inSeq.Length < maxPeakFalling + preambleLength)
+        //     return false;
+        if (inSeq.Length < preambleLength * 2 - 1)
+            return false;
+
+        var buffer = ArrayPool<TSample>.Shared.Rent((int)inSeq.Length);
+        var bufferSpan = buffer.AsSpan(0, (int)inSeq.Length);
+        inSeq.CopyTo(bufferSpan);
+        var preambleSpan = preamble.Samples.Span;
+
+        var restNum = -1;
+        var localMaxCorr = TSample.Zero;
+        var found = false;
+        var examed = 0;
+        // while (examed < bufferSpan.Length - preambleLength + 1 && restNum != 0)
+        while (true)
+        {
+            var corr = TSample.Zero;
+            for (int j = 0; j < preambleLength; j++)
+            {
+                corr += bufferSpan[examed + j] * preambleSpan[j];
+            }
+            corr /= preambleLengthT;
+
+            if (corr > corrThresholdT && corr > localMaxCorr)
+            {
+                // Console.WriteLine("Detected");
+                // Console.WriteLine($"corr {corr}");
+                localMaxCorr = corr;
+                restNum = maxPeakFalling;
+
+                if (examed + maxPeakFalling + preambleLength > bufferSpan.Length)
+                {
+                    break;
+
+                    // inSeq = inSeq.Slice(i);
+                    // ArrayPool<TSample>.Shared.Return(buffer);
+                    // return false;
+                    // break;
+                }
+            }
+            else if (restNum > 0)
+            {
+                restNum--;
+            }
+
+            if (!(restNum != 0 && (examed + 1) < bufferSpan.Length - preambleLength + 1))
+                break;
+
+            examed++;
+        }
+
+        if (restNum == 0)
+        {
+            inSeq = inSeq.Slice(examed + preambleLength - maxPeakFalling);
+            // found = true;
+            // ArrayPool<TSample>.Shared.Return(buffer);
+            // return true;
+        }
+        else if (restNum > 0)
+
+            // if (!found)
+            // inSeq = inSeq.Slice(inSeq.End);
+            inSeq = inSeq.Slice(examed);
+        else
+            inSeq = inSeq.Slice(bufferSpan.Length - preambleLength + 1);
+
+        ArrayPool<TSample>.Shared.Return(buffer);
+
+        return restNum == 0;
+    }
+    public bool TrySearch1(ref ReadOnlySequence<TSample> inSeq)
     {
         if (inSeq.Length < preambleLength * 2 - 1)
             return false;

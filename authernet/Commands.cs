@@ -1,4 +1,4 @@
-#define ASIO
+// #define ASIO
 
 using System.CommandLine;
 using System.IO.Pipelines;
@@ -366,17 +366,22 @@ public static class CommandTask
             outChannel = audioOutPipe;
         }
 
-        var symbols = new DPSKSymbol<float>(Program.option with { SampleRate = waveFormat.SampleRate });
-        var modulator = new Modulator<ChirpPreamble<float>, DPSKSymbol<float>>(
+        // var symbols = new DPSKSymbol<float>(Program.option with { SampleRate = waveFormat.SampleRate });
+        var symbols = new LineSymbol<float>(Program.lineOption);
+        // var modulator = new Modulator<ChirpPreamble<float>, DPSKSymbol<float>>(
+        //     new ChirpPreamble<float>(symbols: Program.chirpOption with { SampleRate = waveFormat.SampleRate }),
+        //     symbols
+        // );
+        var modulator = new Modulator<ChirpPreamble<float>, LineSymbol<float>>(
             new ChirpPreamble<float>(symbols: Program.chirpOption with { SampleRate = waveFormat.SampleRate }), symbols
         );
         await using var tx = new TXPhy<float>(outChannel, modulator);
 
         var index = 0;
-        var warmup = new WarmupPreamble<DPSKSymbol<float>, float>(symbols, 2000);
+        // var warmup = new WarmupPreamble<DPSKSymbol<float>, float>(symbols, 2000);
 
-        await outChannel.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
-        await Task.Delay(500);
+        // await outChannel.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
+        // await Task.Delay(500);
 
         await foreach (var data in FileHelper.ReadFileChunkAsync(file, 128, binaryTxt, cts.Source.Token))
         {
@@ -403,48 +408,55 @@ public static class CommandTask
         Task rec;
         WaveFormat waveFormat;
         IInStream<float> audioIn;
-
-        // using var asio = new AsioOut();
+#if ASIO
+        using var asio = new AsioOut();
+#else
+        // using var wasapiIn = new WasapiLoopbackCapture();
+        using var wasapiIn = new WasapiCapture(recorder, true, 10);
+#endif
 
         if (fromWav is null)
         {
-            var wasapiIn = new WasapiLoopbackCapture();
-            // var wasapiIn = new WasapiCapture(recorder, true, 10);
+#if ASIO
+            waveFormat = new WaveFormat(48000, 32, 1);
+            asio.InitRecordAndPlayback(null, capture, 48000);
+
+#else
             waveFormat = wasapiIn.WaveFormat;
+#endif
             // waveFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 0);
-            // waveFormat = new WaveFormat(48000, 32, 1);
 
             var audio = new AudioMonoInStream<float>(waveFormat, 0);
-
-            // asio.InitRecordAndPlayback(null, capture, 48000);
+#if ASIO
+            asio.AudioAvailable += audio.DataAvailable;
+            rec = Audio.PlayAsync(asio, cts.Source.Token);
+#else
+            wasapiIn.DataAvailable += audio.DataAvailable;
+            rec = Audio.RecordAsync(wasapiIn, cts.Source.Token);
+#endif
             // asio.ShowControlPanel();
             // Audio.ListAsioDevices();
             // Console.ReadLine();
 
-            wasapiIn.DataAvailable += audio.DataAvailable;
-            // asio.AudioAvailable += audio.DataAvailable;
-
             audioIn = audio;
 
-            rec = Audio.RecordAsync(wasapiIn, cts.Source.Token);
             // rec = Task.CompletedTask;
-            // rec = Audio.PlayAsync(asio, cts.Source.Token);
         }
         else
         {
             static async Task CopyToAudioAsync(WaveFileReader reader, PipeWriter writer)
             {
                 using var stream = writer.AsStream();
-                await reader.CopyToAsync(stream);
-                // var buffer = new byte[1900];
-                // while (true)
-                // {
-                //     var read = await reader.ReadAsync(buffer.AsMemory());
-                //     if (read == 0)
-                //         break;
-                //     await writer.WriteAsync(buffer.AsMemory(0, read));
-                //     await Task.Delay(10);
-                // }
+                // await reader.CopyToAsync(stream);
+                var buffer = new byte[1900];
+                while (true)
+                {
+                    var read = await reader.ReadAsync(buffer.AsMemory());
+                    if (read == 0)
+                        break;
+                    await writer.WriteAsync(buffer.AsMemory(0, read));
+                    await Task.Delay(10);
+                }
                 await writer.CompleteAsync();
             }
 
@@ -512,33 +524,37 @@ public static class CommandTask
     {
         using var cts = new CancelKeyPressCancellationTokenSource(new());
 
-        using var player = Audio.GetWASAPIDevice(render, DataFlow.Render);
-        using var recorder = Audio.GetWASAPIDevice(capture, DataFlow.Capture);
-
-        // using var wasapiIn = new WasapiLoopbackCapture();
-        // using var wasapiIn = new WasapiCapture(recorder, true, 0);
-        // using var wasapiOut = new WasapiOut(player, AudioClientShareMode.Shared, true, 0);
-
         // Console.WriteLine(wasapiIn.WaveFormat.SampleRate);
         // Console.WriteLine(wasapiOut.OutputWaveFormat.SampleRate);
 
+#if ASIO
         using var asio = new AsioOut() { ChannelOffset = render, InputChannelOffset = capture };
         var recordFormat = new WaveFormat(48000, 32, 1);
         var playbackFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 1);
+#else
+        // using var wasapiIn = new WasapiLoopbackCapture();
+        using var player = Audio.GetWASAPIDevice(render, DataFlow.Render);
+        using var recorder = Audio.GetWASAPIDevice(capture, DataFlow.Capture);
+        using var wasapiIn = new WasapiCapture(recorder, true, 0);
+        using var wasapiOut = new WasapiOut(player, AudioClientShareMode.Shared, true, 0);
+        var recordFormat = wasapiIn.WaveFormat;
+        var playbackFormat = WaveFormat.CreateIeeeFloatWaveFormat(wasapiOut.OutputWaveFormat.SampleRate, 1);
+#endif
         await using var audioIn = new AudioMonoInStream<float>(recordFormat, 0);
         await using var audioOut = new AudioOutChannel(playbackFormat);
         // await using var audioIn = new AudioMonoInStream<float>(wasapiIn.WaveFormat, 0);
         // await using var audioOut =
         //     new AudioOutChannel(WaveFormat.CreateIeeeFloatWaveFormat(wasapiOut.OutputWaveFormat.SampleRate, 1));
-
+#if ASIO
         asio.InitRecordAndPlayback(audioOut.SampleProvider.ToWaveProvider(), 1, 48000);
         asio.AudioAvailable += audioIn.DataAvailable;
-        // wasapiIn.DataAvailable += audioIn.DataAvailable;
-        // wasapiOut.Init(audioOut.SampleProvider.ToWaveProvider());
-
-        // var recordTask = Audio.RecordAsync(wasapiIn, cts.Source.Token);
-        // var playTask = Audio.PlayAsync(wasapiOut, cts.Source.Token);
         var playTask = Audio.PlayAsync(asio, cts.Source.Token);
+#else
+        wasapiIn.DataAvailable += audioIn.DataAvailable;
+        wasapiOut.Init(audioOut.SampleProvider.ToWaveProvider());
+        var recordTask = Audio.RecordAsync(wasapiIn, cts.Source.Token);
+        var playTask = Audio.PlayAsync(wasapiOut, cts.Source.Token);
+#endif
 
         var preamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = 48000 });
         // var preamble =
@@ -563,19 +579,19 @@ public static class CommandTask
 
         await using var mac = new MacD(phyDuplex, phyDuplex, addressSource, addressDest, 1, 32);
 
-        // var warmup = new WarmupPreamble<DPSKSymbol<float>, float>(symbol, 2000);
-        // await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
-        // await Task.Delay(500);
-        using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", playbackFormat);
-        // using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", wasapiIn.WaveFormat);
+        var warmup = new WarmupPreamble<LineSymbol<float>, float>(symbol, 2000);
+        await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
+        await Task.Delay(500);
+        // using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", playbackFormat);
+        // // using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", wasapiIn.WaveFormat);
+        // var buf = new float[2048];
+        // asio.AudioAvailable += (s, e) =>
+        // {
+        //     var size = e.GetAsInterleavedSamples(buf);
+        //     wave.Write(buf.AsSpan(0, size).AsBytes());
+        // };
         if (send is not null)
         {
-            var buf = new float[2048];
-            asio.AudioAvailable += (s, e) =>
-            {
-                var size = e.GetAsInterleavedSamples(buf);
-                wave.Write(buf.AsSpan(0, size).AsBytes());
-            };
             // { wave.Write(e.Buffer, 0, e.BytesRecorded); };
             var index = 0;
             await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 128, binaryTxt, cts.Source.Token))
@@ -594,7 +610,7 @@ public static class CommandTask
             Console.WriteLine(packet);
         }
         Console.WriteLine("Done");
-        await playTask;
+        // await playTask;
         // await recordTask;
         // var inStream = pipeRec.Writer.AsStream();
         // wasapiIn.DataAvailable += (s, e) => inStream.Write(e.Buffer, 0, e.BytesRecorded);
@@ -752,23 +768,23 @@ public static class CommandTask
         async Task FillTxAsync()
         {
 
-            await foreach (var packet in rx.Reader.ReadAllAsync(cts.Source.Token))
-            {
-                await mac.WriteAsync(packet, cts.Source.Token);
-            }
+            // await foreach (var packet in rx.Reader.ReadAllAsync(cts.Source.Token))
+            // {
+            //     await mac.WriteAsync(packet, cts.Source.Token);
+            // }
         }
 
         async Task FillRxAsync()
         {
-            while (true)
-            {
-                var packet = await mac.ReadAsync(cts.Source.Token);
-                Console.WriteLine(packet.ToArray().Length);
-                if (packet.IsEmpty)
-                    break;
-                await tx.Writer.WriteAsync(packet, cts.Source.Token);
-                Console.WriteLine("Rx");
-            }
+            // while (true)
+            // {
+            //     var packet = await mac.ReadAsync(cts.Source.Token);
+            //     Console.WriteLine(packet.ToArray().Length);
+            //     if (packet.IsEmpty)
+            //         break;
+            //     await tx.Writer.WriteAsync(packet, cts.Source.Token);
+            //     Console.WriteLine("Rx");
+            // }
         }
 
         await Task.WhenAll(
