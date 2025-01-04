@@ -665,11 +665,11 @@ public static class CommandTask
     {
         using var adapter = Adapter.Create(adapterName, adapterName, guids[guidIndex]);
         using var session = adapter.StartSession(0x40000);
-        var rx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
         var tx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
+        var rx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
         using var cts = new CancelKeyPressCancellationTokenSource(new());
 
-        async Task TunRxDaemonAsync()
+        async Task TunTxAsync()
         {
             while (true)
             {
@@ -687,7 +687,7 @@ public static class CommandTask
                     {
                         Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
                         Console.WriteLine();
-                        await rx.Writer.WriteAsync(new(packetArr), cts.Source.Token);
+                        await tx.Writer.WriteAsync(new(packetArr), cts.Source.Token);
                     }
                     // rx.TryWrite(packetArr);
                     session.ReleaseReceivePacket(packet);
@@ -697,9 +697,9 @@ public static class CommandTask
             }
         }
 
-        async Task TunTxDaemonAsync()
+        async Task TunRxAsync()
         {
-            await foreach (var data in tx.Reader.ReadAllAsync(cts.Source.Token))
+            await foreach (var data in rx.Reader.ReadAllAsync(cts.Source.Token))
             {
                 var ipPacket = new IPv4Packet(new(data.ToArray()));
                 Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
@@ -768,16 +768,16 @@ public static class CommandTask
         var warmup = new WarmupPreamble<LineSymbol<float>, float>(symbol, 2000);
         await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
         await Task.Delay(500);
-
-        async Task FillRxAsync()
+        Console.WriteLine("Start");
+        async Task MacTxAsync()
         {
-            await foreach (var packet in rx.Reader.ReadAllAsync(cts.Source.Token))
+            await foreach (var packet in tx.Reader.ReadAllAsync(cts.Source.Token))
             {
                 await mac.WriteAsync(packet, cts.Source.Token);
             }
         }
 
-        async Task FillTxAsync()
+        async Task MacRxAsync()
         {
             while (true)
             {
@@ -785,14 +785,12 @@ public static class CommandTask
                 Console.WriteLine(packet.ToArray().Length);
                 if (packet.IsEmpty)
                     break;
-                await tx.Writer.WriteAsync(packet, cts.Source.Token);
+                await rx.Writer.WriteAsync(packet, cts.Source.Token);
                 Console.WriteLine("Rx");
             }
         }
 
-        await Task.WhenAll(
-            FillTxAsync(), FillRxAsync(), audioTask, Task.Run(TunRxDaemonAsync), Task.Run(TunTxDaemonAsync)
-        );
+        await Task.WhenAll(MacTxAsync(), MacRxAsync(), audioTask, Task.Run(TunRxAsync), Task.Run(TunTxAsync));
     }
 
     public static async Task HotSpotTaskAsync(string? profileName)

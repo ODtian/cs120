@@ -611,11 +611,7 @@ public class CSMAPhy<TSample>
     {
         data = data.RSEncode(Program.eccNums).LengthEncode<byte>();
         Console.WriteLine("//// Send");
-        foreach (var d in data.GetElements())
-        {
-            Console.Write($"{d:X2} ");
-        }
-        Console.WriteLine();
+        Console.WriteLine(Convert.ToHexString(data.ToArray()));
         Console.WriteLine("////");
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
 
@@ -721,11 +717,7 @@ public class CSMAPhy<TSample>
                 // await samplesOut.WriteAsync(new ReadOnlySequence<TSample>(buf), cts.Token);
                 var data = new ReadOnlySequence<byte>(writer.WrittenMemory);
                 Console.WriteLine("//// Receive");
-                foreach (var d in data.GetElements())
-                {
-                    Console.Write($"{d:X2} ");
-                }
-                Console.WriteLine();
+                Console.WriteLine(Convert.ToHexString(data.ToArray()));
                 // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
                 var payload = data.LengthDecode<byte>(out var lengthValid).RSDecode(Program.eccNums, out var eccValid);
                 payload.MacGet(out var mac);
