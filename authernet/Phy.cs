@@ -736,7 +736,7 @@ public class CSMAPhy<TSample>
 
                 if (lengthValid && eccValid)
                 {
-                    await RxWriter.WriteAsync(data);
+                    await RxWriter.WriteAsync(payload);
                 }
             }
             else if (result.IsCompleted)
