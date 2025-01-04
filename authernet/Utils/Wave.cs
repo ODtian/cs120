@@ -652,55 +652,49 @@ public static class WaveReaderExtension
 
         public int Read(float[] buffer, int offset, int count)
         {
-            try
+            // Console.WriteLine(count);
+            if (currentTask.Data.IsEmpty)
             {
-
-                // Console.WriteLine(count);
-                if (currentTask.Data.IsEmpty)
+                // Console.WriteLine(currentTask.Task is null);
+                currentTask.Task?.TrySetResult(true);
+                while (true)
                 {
-                    // Console.WriteLine(currentTask.Task is null);
-                    currentTask.Task?.TrySetResult(true);
-                    while (true)
+                    if (!channelReader.TryPeek(out currentTask))
                     {
-                        if (!channelReader.TryPeek(out currentTask))
+                        if (channelReader.Completion.IsCompleted)
+                            return 0;
+                        // if (readed == 0)
                         {
-                            if (channelReader.Completion.IsCompleted)
-                                return 0;
-                            // if (readed == 0)
-                            {
-                                buffer.AsSpan(offset, count).Clear();
-                                return count;
-                            }
+                            buffer.AsSpan(offset, count).Clear();
+                            return count;
                         }
-
-                        if (currentTask.Task.Task.IsCompleted || currentTask.Data.IsEmpty)
-                            channelReader.TryRead(out _);
-                        else
-                            break;
                     }
+
+                    if (currentTask.Task.Task.IsCompleted || currentTask.Data.IsEmpty)
+                        channelReader.TryRead(out _);
+                    else
+                        break;
                 }
-
-                var readed = (int)Math.Min(count, currentTask.Data.Length);
-                currentTask.Data.Slice(0, readed).CopyTo(buffer.AsSpan(offset, readed));
-                currentTask.Data = currentTask.Data.Slice(readed);
-
-                // if (currentTask.Data.IsEmpty)
-                // {
-                //     // Console.WriteLine(currentTask.Task is null);
-                //     currentTask.Task?.TrySetResult(true);
-                // }
-                // Console.WriteLine(readed);
-                // for (int i = 0; i < readed; i++)
-                // {
-                //     Console.WriteLine(buffer[i + offset]);
-                // }
-                return readed;
             }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                return 0;
-            }
+
+            var readed = (int)Math.Min(count, currentTask.Data.Length);
+            // if (readed != count)
+            buffer.AsSpan(offset + readed, count - readed).Clear();
+            currentTask.Data.Slice(0, readed).CopyTo(buffer.AsSpan(offset, readed));
+            currentTask.Data = currentTask.Data.Slice(readed);
+
+            // if (currentTask.Data.IsEmpty)
+            // {
+            //     // Console.WriteLine(currentTask.Task is null);
+            //     currentTask.Task?.TrySetResult(true);
+            // }
+            // Console.WriteLine(readed);
+            // for (int i = 0; i < readed; i++)
+            // {
+            //     Console.WriteLine(buffer[i + offset]);
+            // }
+            // return readed;
+            return count;
         }
     }
 
