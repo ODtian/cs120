@@ -545,7 +545,7 @@ public static class CommandTask
         // await using var audioIn = new AudioMonoInStream<float>(wasapiIn.WaveFormat, 0);
         // await using var audioOut =
         //     new AudioOutChannel(WaveFormat.CreateIeeeFloatWaveFormat(wasapiOut.OutputWaveFormat.SampleRate, 1));
-        using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", playbackFormat);
+        // using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", playbackFormat);
 #if ASIO
         asio.InitRecordAndPlayback(audioOut.SampleProvider.ToWaveProvider(), 1, 48000);
         asio.AudioAvailable += audioIn.DataAvailable;
@@ -554,7 +554,7 @@ public static class CommandTask
         asio.AudioAvailable += (s, e) =>
         {
             var size = e.GetAsInterleavedSamples(buf);
-            wave.Write(buf.AsSpan(0, size).AsBytes());
+            // wave.Write(buf.AsSpan(0, size).AsBytes());
         };
 #else
         wasapiIn.DataAvailable += audioIn.DataAvailable;
@@ -584,7 +584,7 @@ public static class CommandTask
             new PreambleDetection<float>(
                 preamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
             ),
-            new CarrierQuietSensor<float>(0.5f),
+            new CarrierQuietSensor<float>(0.25f),
             addressSource
         );
 
@@ -593,8 +593,8 @@ public static class CommandTask
         // await Task.Delay(5000);
         using var inputReader = new StreamReader(Console.OpenStandardInput(), Console.InputEncoding);
         await inputReader.ReadLineAsync();
-        // var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 2000);
-        // await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
+        var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 2000);
+        await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
         // await Task.Delay(500);
 
         if (send is not null)

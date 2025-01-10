@@ -658,14 +658,14 @@ public class CSMAPhy<TSample>
         await processTask.WaitAsync(CancellationToken.None);
         cts.Dispose();
 
-        if (samples.Count > 0 && true)
+        if (samples.Count > 0 && false)
         {
             var length = samples.Select(x => x.Length).Max();
             var samplesResize = samples.Select(x => x.Concat(Enumerable.Repeat(default(TSample), length - x.Length)));
             var mat = Matrix<TSample>.Build.DenseOfRows(samplesResize);
             MatlabWriter.Write("../matlab/receive.mat", mat, $"audio_rec");
         }
-        if (samples2.Count > 0 && true)
+        if (samples2.Count > 0 && false)
         {
             var length = samples2.Select(x => x.Length).Max();
             var samplesResize = samples2.Select(x => x.Concat(Enumerable.Repeat(default(TSample), length - x.Length)));
