@@ -120,7 +120,7 @@ public static class CodecRS
 {
     // public static int EccNums { get; set; } = 7;
     // private static int eccNums = Program.eccNums;
-    public static readonly GenericGF rs = new(285, 256, 1);
+    public static readonly GenericGF rs = new(285, 1024, 1);
     public static readonly ReedSolomonEncoder encoder = new(rs);
     public static readonly ReedSolomonDecoder decoder = new(rs);
 

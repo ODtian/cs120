@@ -749,9 +749,9 @@ public static class CommandTask
         var modSym = new TriSymbol<float>(Program.triOption);
         var demodSym = new LineSymbol<float>(Program.lineOption);
         var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(preamble, modSym);
-        var demodulator = new Demodulator<LineSymbol<float>, float, byte>(demodSym, byte.MaxValue);
+        var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 1024);
 
-        await using var phyDuplex = new CSMAPhy<float, byte>(
+        await using var phyDuplex = new CSMAPhy<float, ushort>(
             audioIn,
             audioOut,
             demodulator,
@@ -788,8 +788,9 @@ public static class CommandTask
                 Console.WriteLine("Rx");
             }
         }
-
-        await Task.WhenAll(MacTxAsync(), MacRxAsync(), audioTask, Task.Run(TunRxAsync), Task.Run(TunTxAsync));
+        await foreach (var task in Task.WhenEach(
+                           MacTxAsync(), MacRxAsync(), audioTask, Task.Run(TunRxAsync), Task.Run(TunTxAsync)
+                       )) await task;
     }
 
     public static async Task HotSpotTaskAsync(string? profileName)
