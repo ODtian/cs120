@@ -710,16 +710,16 @@ public static class CommandTask
 
         async Task TunRxAsync()
         {
-            // await foreach (var data in rx.Reader.ReadAllAsync(cts.Source.Token))
-            // {
-            //     var ipPacket = new IPv4Packet(new(data.ToArray()));
-            //     Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
-            //     // foreach (var b in data.GetElements())
-            //     //     Console.Write($"{b:X2} ");
-            //     session.AllocateSendPacket((uint)data.Length, out var send);
-            //     data.CopyTo(send.Span);
-            //     session.SendPacket(send);
-            // }
+            await foreach (var data in rx.Reader.ReadAllAsync(cts.Source.Token))
+            {
+                var ipPacket = new IPv4Packet(new(data.ToArray()));
+                Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+                // foreach (var b in data.GetElements())
+                //     Console.Write($"{b:X2} ");
+                session.AllocateSendPacket((uint)data.Length, out var send);
+                data.CopyTo(send.Span);
+                session.SendPacket(send);
+            }
         }
         // Console.WriteLine(wasapiIn.WaveFormat.SampleRate);
         // Console.WriteLine(wasapiOut.OutputWaveFormat.SampleRate);
