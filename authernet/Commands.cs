@@ -691,7 +691,9 @@ public static class CommandTask
                     // Console.WriteLine();
                     var packetArr = packet.Span.ToArray();
                     var ipPacket = new IPv4Packet(new(packetArr));
-                    if (ipPacket.Protocol is ProtocolType.Icmp)
+                    if (ipPacket.Protocol is ProtocolType.Icmp ||
+                        (ipPacket.Protocol is ProtocolType.Udp && ipPacket.PayloadPacket as UdpPacket
+                                                                  is { DestinationPort : 53 } or { SourcePort : 53 }))
                     {
                         Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
                         Console.WriteLine();
