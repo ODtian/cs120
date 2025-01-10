@@ -9,6 +9,7 @@ using CS120.Preamble;
 using CS120.TxRx;
 using CS120.Utils;
 using CS120.Utils.Extension;
+using CS120.Utils.IO;
 using CS120.Utils.Wave;
 using DotNext.Threading;
 using MathNet.Numerics.Data.Matlab;
@@ -375,8 +376,9 @@ namespace CS120.Phy;
 //     }
 // }
 
-public class RXPhy<TSample> : IInChannel<ReadOnlySequence<byte>>, IAsyncDisposable
+public class RXPhy<TSample, TLength> : IInChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     where TSample : unmanaged, INumber<TSample>
+    where TLength : IBinaryInteger<TLength>
 {
     private readonly IInStream<TSample> samplesIn;
     private readonly ISequnceReader<TSample, byte> demodulator;
@@ -406,6 +408,7 @@ public class RXPhy<TSample> : IInChannel<ReadOnlySequence<byte>>, IAsyncDisposab
         await cts.CancelAsync();
         await processTask.WaitAsync(CancellationToken.None);
         cts.Dispose();
+        RxWriter.TryComplete();
         if (samples.Count > 0)
         {
             // var length = samples.Select(x => x.Length).Max();
@@ -417,17 +420,21 @@ public class RXPhy<TSample> : IInChannel<ReadOnlySequence<byte>>, IAsyncDisposab
 
     private async Task RunProcessAsync()
     {
+        Exception? exception = null;
         try
         {
             await ProcessAsync();
-            RxWriter.TryComplete();
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception e)
         {
-            if (e is OperationCanceledException)
-                RxWriter.TryComplete();
-            else
-                RxWriter.TryComplete(e);
+            exception = e;
+        }
+        finally
+        {
+            RxWriter.TryComplete(exception);
         }
     }
 
@@ -457,7 +464,7 @@ public class RXPhy<TSample> : IInChannel<ReadOnlySequence<byte>>, IAsyncDisposab
                 }
 
                 var data = new ReadOnlySequence<byte>(writer.WrittenMemory)
-                               .LengthDecode<byte>(out var lengthValid)
+                               .LengthDecode<TLength>(out var lengthValid)
                                .RSDecode(Program.eccNums, out var eccValid);
 
                 Console.WriteLine("//// Receive");
@@ -482,22 +489,15 @@ public class RXPhy<TSample> : IInChannel<ReadOnlySequence<byte>>, IAsyncDisposab
             samplesIn.AdvanceTo(seq.Start);
         }
     }
-    public async ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct)
-    {
-        if (await RxReader.WaitToReadAsync(ct))
-            if (RxReader.TryRead(out var data))
-                return data;
-
-        return ReadOnlySequence<byte>.Empty;
-        // return RxReader.ReadAsync(ct);
-    }
-    // public ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct
-    // ) => RxReader.ReadAsync(ct);
+    public async ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct) => await RxReader.ReadAsync(ct);
 }
 
-public class TXPhy<TSample>(IOutChannel<ReadOnlySequence<TSample>> outChannel, ISequnceReader<byte, TSample> modulator)
+public class TXPhy<TSample, TLength>(
+    IOutChannel<ReadOnlySequence<TSample>> outChannel, ISequnceReader<byte, TSample> modulator
+)
     : IOutChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     where TSample : unmanaged, INumber<TSample>
+    where TLength : IBinaryInteger<TLength>
 {
     private readonly IOutChannel<ReadOnlySequence<TSample>> samplesOut = outChannel;
     private readonly ISequnceReader<byte, TSample> modulator = modulator;
@@ -516,7 +516,7 @@ public class TXPhy<TSample>(IOutChannel<ReadOnlySequence<TSample>> outChannel, I
         }
         Console.WriteLine();
         Console.WriteLine("////");
-        data = data.RSEncode(Program.eccNums).LengthEncode<byte>();
+        data = data.RSEncode(Program.eccNums).LengthEncode<TLength>();
         using (await sendLock.AcquireLockAsync(ct))
         {
 
@@ -527,10 +527,6 @@ public class TXPhy<TSample>(IOutChannel<ReadOnlySequence<TSample>> outChannel, I
             sequence.Reset();
         }
     }
-    public ValueTask CompleteAsync(Exception? exception)
-    {
-        return samplesOut.CompleteAsync(exception);
-    }
 
     public ValueTask DisposeAsync()
     {
@@ -538,13 +534,15 @@ public class TXPhy<TSample>(IOutChannel<ReadOnlySequence<TSample>> outChannel, I
         // var samplesResize = samples.Select(x => x.Concat(Enumerable.Repeat(default(TSample), length - x.Length)));
         // var mat = Matrix<TSample>.Build.DenseOfRows(samplesResize);
         // MatlabWriter.Write("../matlab/send.mat", mat, $"audio");
-        return samplesOut.CompleteAsync();
+        // return samplesOut.CompleteAsync();
+        return ValueTask.CompletedTask;
     }
 }
 
-public class CSMAPhy<TSample>
+public class CSMAPhy<TSample, TLength>
     : IOutChannel<ReadOnlySequence<byte>>, IInChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     where TSample : unmanaged, INumber<TSample>
+    where TLength : IBinaryInteger<TLength>
 {
 
     private readonly AsyncExclusiveLock sendLock = new();
@@ -560,7 +558,8 @@ public class CSMAPhy<TSample>
     private readonly ISequnceSearcher<TSample> carrierSensor;
 
     private readonly Channel<ReadOnlySequence<byte>> channelRx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
-
+    private ChannelReader<ReadOnlySequence<byte>> RxReader => channelRx.Reader;
+    private ChannelWriter<ReadOnlySequence<byte>> RxWriter => channelRx.Writer;
     private bool quiet = false;
 
     // private bool quiting = false;
@@ -569,21 +568,18 @@ public class CSMAPhy<TSample>
     private readonly CancellationTokenSource cts = new();
     private readonly Task processTask;
 
-    private ChannelReader<ReadOnlySequence<byte>> RxReader => channelRx.Reader;
-    private ChannelWriter<ReadOnlySequence<byte>> RxWriter => channelRx.Writer;
-    private int seed;
+    // private int seed;
     private readonly List<TSample[]> samples2 = [];
     private readonly List<TSample[]> samples = [];
 
-    public bool IsCompleted => RxReader.IsFinished();
+    // public bool IsCompleted => RxReader.IsFinished();
     public CSMAPhy(
         IInStream<TSample> inStream,
         IOutChannel<ReadOnlySequence<TSample>> outChannel,
         ISequnceReader<TSample, byte> demodulator,
         ISequnceReader<byte, TSample> modulator,
         ISequnceSearcher<TSample> preambleDetection,
-        ISequnceSearcher<TSample> carrierSensor,
-        int seed
+        ISequnceSearcher<TSample> carrierSensor
     )
     {
         samplesIn = inStream;
@@ -598,20 +594,13 @@ public class CSMAPhy<TSample>
         // cts = new CancellationTokenSource();
         // processTask = Task.Run(ProcessAsync);
         processTask = Task.Run(RunProcessAsync);
-        this.seed = seed;
+        // this.seed = seed;
     }
-    public async ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct)
-    {
-        if (await RxReader.WaitToReadAsync(ct))
-            if (RxReader.TryRead(out var data))
-                return data;
-
-        return ReadOnlySequence<byte>.Empty;
-    }
+    public async ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct) => await RxReader.ReadAsync(ct);
 
     public async ValueTask WriteAsync(ReadOnlySequence<byte> data, CancellationToken ct)
     {
-        data = data.RSEncode(Program.eccNums).LengthEncode<byte>();
+        data = data.RSEncode(Program.eccNums).LengthEncode<TLength>();
         Console.WriteLine("//// Send");
         Console.WriteLine(Convert.ToHexString(data.ToArray()));
         Console.WriteLine("////");
@@ -650,13 +639,12 @@ public class CSMAPhy<TSample>
         }
     }
 
-    public ValueTask CompleteAsync(Exception? exception) => samplesOut.CompleteAsync(exception);
-
     public async ValueTask DisposeAsync()
     {
         await cts.CancelAsync();
         await processTask.WaitAsync(CancellationToken.None);
         cts.Dispose();
+        RxWriter.TryComplete();
 
         if (samples.Count > 0 && false)
         {
@@ -676,17 +664,21 @@ public class CSMAPhy<TSample>
 
     private async Task RunProcessAsync()
     {
+        Exception? exception = null;
         try
         {
             await ProcessAsync();
-            RxWriter.TryComplete();
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception e)
         {
-            if (e is OperationCanceledException)
-                RxWriter.TryComplete();
-            else
-                RxWriter.TryComplete(e);
+            exception = e;
+        }
+        finally
+        {
+            RxWriter.TryComplete(exception);
         }
     }
 
@@ -721,6 +713,7 @@ public class CSMAPhy<TSample>
 
                 var count = samples.Count;
                 samples.Add(seq.ToArray());
+
                 while (!demodulator.TryRead(ref seq, writer))
                 {
                     if (result.IsCompleted)
@@ -741,7 +734,8 @@ public class CSMAPhy<TSample>
                 Console.WriteLine("//// Receive");
                 Console.WriteLine(Convert.ToHexString(data.ToArray()));
                 // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-                var payload = data.LengthDecode<byte>(out var lengthValid).RSDecode(Program.eccNums, out var eccValid);
+                var payload =
+                    data.LengthDecode<TLength>(out var lengthValid).RSDecode(Program.eccNums, out var eccValid);
                 payload.MacGet(out var mac);
                 Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
                 Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");

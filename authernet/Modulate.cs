@@ -4,6 +4,7 @@ using CS120.Preamble;
 using CS120.Symbol;
 using CS120.Utils;
 using CS120.Utils.Buffer;
+using CS120.Utils.Extension;
 using CS120.Utils.Helpers;
 using CS120.Utils.Wave;
 
@@ -14,6 +15,8 @@ public interface ISequnceReader<TIn, TOut>
     // bool TryReadTo(Span<T> dst, bool advandce = true);
     bool TryRead<T>(ref ReadOnlySequence<TIn> inSeq, T writer)
         where T : IBufferWriter<TOut>;
+    // bool TryRead(ref ReadOnlySequence<TIn> inSeq, Span<TOut> buffer);
+
 }
 
 public class Modulator<TPreamble, TSymbol>(TPreamble preamble, TSymbol symbol) : ISequnceReader<byte, float>

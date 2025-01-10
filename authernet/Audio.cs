@@ -1,5 +1,6 @@
 using System.IO.Pipelines;
 using CS120.Utils.Wave;
+using CS120.Utils.Wave.Provider;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using NAudio.Wave.Asio;
@@ -72,8 +73,6 @@ public static class Audio
         await PlayAsync<T>(audio, ct);
     }
 
-
-
     public static async Task RecordAsync<T>(T recorder, CancellationToken ct)
         where T : IWaveIn
     {
@@ -117,7 +116,6 @@ public static class Audio
         await RecordAsync<T>(fileWriter, ct);
     }
 
-
     public static async Task RecordThenPlayAsync<TWaveIn, TWaveOut>(IEnumerable<CancellationToken> ct)
         where TWaveIn : IWaveIn, new()
         where TWaveOut : IWavePlayer, new()
@@ -158,7 +156,7 @@ public static class Audio
 
     public static async Task ASIOPlayAsync(IWaveProvider waveProvider, CancellationToken ct)
     {
-        using var player = new AsioOut() { };
+        using var player = new AsioOut() {};
         player.Init(waveProvider);
         await PlayAsync(player, ct);
     }
@@ -168,7 +166,6 @@ public static class Audio
         using var audio = new AudioFileReader(audioFile);
         await ASIOPlayAsync(audio, ct);
     }
-
 
     public static MMDevice GetWASAPIDevice(int index, DataFlow dataFlow)
     {

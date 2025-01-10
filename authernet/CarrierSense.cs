@@ -5,6 +5,7 @@ using CS120.Preamble;
 using CS120.Utils;
 using CS120.Utils.Extension;
 using CS120.Utils.Wave;
+using CS120.Utils.Wave.Provider;
 using DotNext.Buffers;
 using NAudio.Wave;
 

@@ -3,6 +3,7 @@ using System.Threading.Channels;
 using CS120.Packet;
 using CS120.TxRx;
 using CS120.Utils.Extension;
+using CS120.Utils.IO;
 using CS120.Utils.Wave;
 using DotNext.Threading;
 
@@ -54,74 +55,10 @@ public struct MacFrame
     }
 }
 
-// public class MacDuplex
-// (ChannelWriter<byte[]> writer, ChannelReader<byte[]> reader, byte address) : DuplexBase
-// {
-
-//     private readonly Dictionary < int, byte[] ? > received = [];
-
-//     public async Task Execute(CancellationToken ct)
-//     {
-//         await Task.WhenAll(Receive(ct), Send(ct));
-//         channelRx.Writer.TryComplete();
-//     }
-
-//     private async Task Receive(CancellationToken ct)
-//     {
-//         await foreach (var packet in reader.ReadAllAsync(ct))
-//         {
-//             packet.MacGet(out var mac);
-//             if (mac.Dest == address)
-//             {
-//                 if (mac.Type is MacFrame.FrameType.Data)
-//                 {
-//                     // if (received[mac.SequenceNumber] is null)
-//                     // received[mac.SequenceNumber] = packet;
-
-//                     /* Find continuous received cached packet */
-//                     // int seq = mac.SequenceNumber;
-
-//                     // while (received[seq] is not null && seq >= 0)
-//                     //     seq--;
-
-//                     // for (int i = seq + 1; i <= mac.SequenceNumber; i++)
-//                     //     await channelRx.Writer.WriteAsync(received[i]!, ct);
-//                     await channelRx.Writer.WriteAsync(packet, ct);
-//                     await writer.WriteAsync(
-//                         Array.Empty<byte>().MacEncode(new(
-//                         ) { Source = mac.Dest, Dest = mac.Source, Type = MacFrame.FrameType.Ack }),
-//                         ct
-//                     );
-//                 }
-//                 else if (mac.Type is MacFrame.FrameType.Ack)
-//                 {
-//                 }
-
-//                 // if (received[mac.SequenceNumber] == null)
-//                 // {
-//                 //     received[mac.SequenceNumber] = packet;
-
-//                 //     await writer.WriteAsync(packet, ct);
-//                 // }
-//             }
-//             // var packet = Packet.Parse(data);
-//             // if(packet != null)
-//             // {
-//             //     received[packet.SequenceNumber] = packet.Data;
-//             // }
-//         }
-//     }
-//     private async Task Send(CancellationToken ct)
-//     {
-//         await foreach (var packet in channelTx.Reader.ReadAllAsync(ct)) await writer.WriteAsync(packet, ct);
-//     }
-// }
-
 public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
 {
     readonly struct Void
     {
-        static readonly Void Value = new();
     }
     // readonly struct MacTask
     // (bool isSend, bool isAck, int sequenceNumber, ReadOnlySequence<byte> data)
@@ -165,7 +102,9 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
 
     // private readonly Channel<WindowItem> channelPending = Channel.CreateUnbounded<WindowItem>();
     private readonly Channel<ReadOnlySequence<byte>> channelRx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
-    private readonly Channel<ReadOnlySequence<byte>> channelRxRaw = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
+
+    private ChannelReader<ReadOnlySequence<byte>> RxReader => channelRx.Reader;
+    private ChannelWriter<ReadOnlySequence<byte>> RxWriter => channelRx.Writer;
     // private readonly Channel<ReadOnlySequence<byte>> channelTx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
 
     // private readonly AsyncExclusiveLock sendLock = new();
@@ -193,17 +132,16 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     private readonly CancellationTokenSource cts = new();
     private int LastAckReceived { get; set; } = -1;
     private int LastDataReceived { get; set; } = -1;
-    private int ToSequnceNumber(int index) => index % sequenceSize;
     private int NextDataNumber => ToSequnceNumber(LastDataReceived + 1);
     // private int NextAck(int ack) => (ack + 1) % sequenceSize;
 
     private int NextAckNumber => ToSequnceNumber(LastAckReceived + 1);
     private int LastDataSend => ToSequnceNumber(LastAckReceived + windowSize);
-    private ChannelReader<ReadOnlySequence<byte>> RxReader => channelRx.Reader;
-    private ChannelWriter<ReadOnlySequence<byte>> RxWriter => channelRx.Writer;
-    private Random random;
 
-    private float factor;
+    private int ToSequnceNumber(int index) => index % sequenceSize;
+    // private Random random;
+
+    // private float factor;
     public bool IsCompleted => RxReader.IsFinished();
     public MacD(
         IInChannel<ReadOnlySequence<byte>> inChannel,
@@ -221,29 +159,21 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         this.inChannel = inChannel;
         this.outChannel = outChannel;
 
-        random = new(from);
-        factor = random.NextSingle() * 0.5f + 0.5f;
-        Console.WriteLine($"Factor: {factor}");
+        // random = new(from);
+        // factor = random.NextSingle() * 0.5f + 0.5f;
+        // Console.WriteLine($"Factor: {factor}");
 
         ackSource = new(windowSize);
         receivedAckCache = Enumerable.Repeat(false, sequenceSize).ToArray();
         receivedDataCache = Enumerable.Repeat(ReadOnlySequence<byte>.Empty, sequenceSize).ToArray();
 
-        receiveTask = RunHandleReceiveAsync();
+        receiveTask = RunProcessReceiveAsync();
 
         foreach (var seq in Enumerable.Range(0, windowSize))
             windowSlotChannel.Writer.TryWrite(seq);
     }
 
-    public async ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct)
-    {
-        if (await RxReader.WaitToReadAsync(ct))
-            if (RxReader.TryRead(out var data))
-                return data;
-
-        return ReadOnlySequence<byte>.Empty;
-        // return RxReader.ReadAsync(ct);
-    }
+    public async ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct) => await RxReader.ReadAsync(ct);
 
     public async ValueTask WriteAsync(ReadOnlySequence<byte> data, CancellationToken ct)
     {
@@ -251,9 +181,10 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         var slot = await windowSlotChannel.Reader.ReadAsync(ct);
 
         var task = ackSource.WaitAsync(slot, ct).AsTask();
-        var tries = random.NextSingle() * 0.5f + 0.5f;
-        var retry = 0;
-        do
+        // var tries = random.NextSingle() * 0.5f + 0.5f;
+        // var retry = 0;
+        var random = new Random();
+        while (true)
         {
             await outChannel.WriteAsync(
                 data.MacEncode(new(
@@ -263,19 +194,13 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             Console.WriteLine($"Send {slot}");
             try
             {
-                await task.WaitAsync(TimeSpan.FromMilliseconds(500) * tries, ct);
-                // var exception = await task.WaitAsync(TimeSpan.FromMilliseconds(2000), ct);;
-                // break;
+                await task.WaitAsync(TimeSpan.FromMilliseconds(500) * (random.NextSingle() * 0.5f + 0.5f), ct);
                 return;
             }
             catch (TimeoutException)
             {
-                // tries = random.NextSingle() * 0.5f + 0.5f;
-                tries = new Random().NextSingle() * 0.5f + 0.5f;
-                // tries += random.NextSingle() * 0.5f + 0.5f;
             }
-        } while (retry++ < 1000000);
-
+        }
         // await channelRxRaw.Writer.WriteAsync(
         //     new ReadOnlySequence<byte>([]).MacEncode(new(
         //     ) { Source = to, Dest = from, Type = MacFrame.FrameType.Ack, SequenceNumber = (byte)slot }),
@@ -283,67 +208,43 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         // );
     }
 
-    public ValueTask CompleteAsync(Exception? exception) => outChannel.CompleteAsync(exception);
-
     public async ValueTask DisposeAsync()
     {
         await cts.CancelAsync();
         await receiveTask.WaitAsync(CancellationToken.None);
         cts.Dispose();
+        RxWriter.TryComplete();
     }
 
-    private async Task RunHandleReceiveAsync()
+    private async Task RunProcessReceiveAsync()
     {
+        Exception? exception = null;
         try
         {
-            await HandleReceiveAsync();
-            RxWriter.TryComplete();
+            await ProcessReceiveAsync();
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception e)
         {
-            if (e is OperationCanceledException)
-                RxWriter.TryComplete();
-            else
-            {
-                Console.WriteLine(e);
-                ackSource.PulseAll(e);
-                RxWriter.TryComplete(e);
-            }
+            exception = e;
         }
-    }
-    private async Task FillChannelAsync()
-    {
-        try
+        finally
         {
-            while (true)
-            {
-                var packet = await inChannel.ReadAsync(cts.Token);
-                if (packet.IsEmpty)
-                {
-                    channelRxRaw.Writer.TryComplete();
-                    break;
-                }
-                await channelRxRaw.Writer.WriteAsync(packet);
-            }
-        }
-        catch (Exception e)
-        {
-            channelRxRaw.Writer.TryComplete(e);
+            RxWriter.TryComplete(exception);
+            ackSource.PulseAll(exception ?? new Exception("Disposed while still waiting for ack"));
         }
     }
 
-    private bool ValueInWindowRange(int windowStart, int val)
+    private async Task ProcessReceiveAsync()
     {
-        return Enumerable.Range(windowStart, windowSize).Any(v => ToSequnceNumber(v) == val);
-    }
-    private async Task HandleReceiveAsync()
-    {
-        // _ = FillChannelAsync();
-        // var quiet = new byte[0];
-        // await foreach (var packet in channelRxRaw.Reader.ReadAllAsync(cts.Token))
-        // while (true)
+        bool ValueInWindowRange(int windowStart, int val)
+        {
+            return Enumerable.Range(windowStart, windowSize).Any(v => ToSequnceNumber(v) == val);
+        }
+
         while (true)
-        // do
         {
             var packet = await inChannel.ReadAsync(cts.Token);
             if (packet.IsEmpty)
@@ -378,20 +279,12 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                             receivedDataCache[NextDataNumber] = ReadOnlySequence<byte>.Empty;
                             LastDataReceived = NextDataNumber;
                         }
-                        // while (receivedDataCache.ContainsKey(NextDataNumber))
-                        // {
-                        //     RxWriter.TryWrite(receivedDataCache[NextDataNumber]);
-                        //     receivedDataCache.Remove(NextDataNumber);
-                        //     LastDataReceived = NextDataNumber;
-                        // }
                     }
                 }
                 else if (header.Type is MacFrame.FrameType.Ack)
                 {
                     Console.WriteLine($"Receive Ack {header.SequenceNumber}");
-                    // ackSource.Complete(mac.SequenceNumber);
                     ackSource.Pulse(header.SequenceNumber, null);
-                    // receivedAckCache.Add(mac.SequenceNumber);
                     if (ValueInWindowRange(NextAckNumber, header.SequenceNumber))
                         receivedAckCache[header.SequenceNumber] = true;
 
@@ -403,149 +296,9 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                             LastAckReceived = NextAckNumber;
                             windowSlotChannel.Writer.TryWrite(LastDataSend);
                         }
-                        // while (receivedAckCache.GetValueOrDefault(NextAckNumber, false))
-                        // {
-                        //     receivedAckCache[NextAckNumber] = false;
-                        // }
-                        // while (receivedAckCache.ContainsKey(NextAckNumber))
-                        // {
-                        //     receivedAckCache.Remove(NextAckNumber);
-                        //     LastAckReceived = NextAckNumber;
-                        // }
                     }
                 }
             }
         }
-        // while (true)
-        // {
-        //     var packet = await inChannel.ReadAsync(cts.Token);
-
-        //     if (packet.IsEmpty)
-        //     {
-        //         break;
-        //     }
-
-        //     packet = packet.MacDecode(out var mac);
-        //     if (mac.Dest == from)
-        //     {
-        //         if (mac.Type is MacFrame.FrameType.Data)
-        //         {
-        //             Console.WriteLine($"Receive Data {mac.SequenceNumber}");
-        //             var ts = DateTime.Now;
-        //             _ = outChannel
-        //                     .WriteAsync(
-        //                         new ReadOnlySequence<byte>([]).MacEncode(new(
-        //                         ) { Source = mac.Dest,
-        //                             Dest = mac.Source,
-        //                             Type = MacFrame.FrameType.Ack,
-        //                             SequenceNumber = mac.SequenceNumber }),
-        //                         cts.Token
-        //                     )
-        //                     .AsTask();
-        //             // Console.WriteLine($"Ack {mac.SequenceNumber} {(DateTime.Now - ts).TotalMilliseconds}");
-        //             receivedDataCache[mac.SequenceNumber] = packet;
-
-        //             if (mac.SequenceNumber == NextDataNumber)
-        //             {
-        //                 while (receivedDataCache.ContainsKey(NextDataNumber))
-        //                 {
-        //                     RxWriter.TryWrite(receivedDataCache[NextDataNumber]);
-        //                     receivedDataCache.Remove(NextDataNumber);
-        //                     LastDataReceived = NextDataNumber;
-        //                 }
-        //             }
-        //         }
-        //         else if (mac.Type is MacFrame.FrameType.Ack)
-        //         {
-        //             Console.WriteLine($"Receive Ack {mac.SequenceNumber}");
-        //             // ackSource.Complete(mac.SequenceNumber);
-        //             ackSource.Pulse(mac.SequenceNumber, null);
-        //             // receivedAckCache.Add(mac.SequenceNumber);
-        //             receivedAckCache[mac.SequenceNumber] = new();
-
-        //             if (mac.SequenceNumber == NextAckNumber)
-        //             {
-        //                 while (receivedAckCache.ContainsKey(NextAckNumber))
-        //                 {
-        //                     receivedAckCache.Remove(NextAckNumber);
-        //                     LastAckReceived = NextAckNumber;
-        //                     windowSlotChannel.Writer.TryWrite(LastDataSend);
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
     }
-
-    // private async Task PendingHandleAsync()
-    // {
-    //     while (true)
-    //     {
-    //         // var emptySlot = await await Task.WhenAny(GetWindowSequenceNumbers().Select(w =>
-    //         sendWindow[w].Tcs.Task)); await sendWindow[NextAckNumber].Tcs.Task;
-    //         // ref var item = ref sendWindow[emptySlot];
-    //         // ref var tiem = ref sendWindow.G
-
-    //         var newTask = sendWindow[NextSequenceNumber] = await channelPending.Reader.ReadAsync();
-    //         await channelWork.Writer.WriteAsync(new MacTask(true, false, NextSequenceNumber, newTask.Data));
-    //         lastDataSend = NextSequenceNumber;
-    //         lastAckReceived = NextAckNumber;
-    //         // if (emptySlot == lastAckReceived + 1)
-    //         // {
-    //         // }
-    //     }
-    //     // while (true)
-    //     // {
-    //     //     var item = await channelPending.Reader.ReadAsync();
-    //     //     var seq = NextSequenceNumber;
-    //     //     sendWindow[seq] = item;
-    //     //     await channelWork.Writer.WriteAsync(new MacTask(true, false, item.Data));
-    //     //     lastDataSend = seq;
-    //     // }
-    // }
-
-    // private IEnumerable<int> GetWindowSequenceNumbers()
-    // {
-    //     for (int i = 0; i < windowSize; i++)
-    //         yield return (i + lastAckReceived + 1) % sequenceSize;
-    // }
-
-    // private async Task WorkHandleAsync()
-    // {
-    //     // while (channel.Reader.TryPeek(out _) {
-
-    //     // }
-    //     while (true)
-    //     {
-    //         var task = await channelWork.Reader.ReadAsync();
-    //         if (task.IsSend)
-    //         {
-    //             // await WirteAsync(task.Data);
-    //         }
-    //         if (!task.IsAck)
-    //         {
-    //             _ = AddWithTimeout(task);
-    //         }
-    //     }
-    //     // private int NextSequenceNumber(int current) => (current + 1) % sequenceSize;
-    // }
-
-    // private async ValueTask AddWithTimeout(MacTask task)
-    // {
-
-    //     if (sendWindow[task.SequenceNumber].retry < 0)
-    //     {
-    //         Task.Factory.StartNew
-    //     }
-    //     // {
-    //     // var tcs = new TaskCompletionSource<int>();
-    //     // var delay = Task.Delay(1000);
-    //     // if (delay == await Task.WhenAny(sendWindow[task.SequenceNumber].Tcs.Task, delay))
-    //     // await channelWork.Writer.WriteAsync(task);
-    //     // }
-    //     // var tcs = new TaskCompletionSource<int>();
-    //     var delay = Task.Delay(1000);
-    //     if (delay == await Task.WhenAny(sendWindow[task.SequenceNumber].Tcs.Task, delay))
-    //         await channelWork.Writer.WriteAsync(task);
-    // }
 }
