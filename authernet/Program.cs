@@ -37,7 +37,7 @@ class Program
         Duration = 0.001f, // Read config or something
         SampleRate = 48_000,
         FreqA = 2_000, // Read config or something
-        FreqB = 20_000 // Read config or something
+        FreqB = 16_000 // Read config or something
     };
 
     public static LineSymbolOption lineOption = new() {
@@ -50,9 +50,10 @@ class Program
         NumSamplesPerSymbol = 2,
     };
 
-    public static float corrThreshold = 0.15f;
-    // public static int maxPeakFalling = chirpOption.NumSamplesPerSymbol / 2;
-    public static int maxPeakFalling = 8;
+    public static float corrThreshold = 0.2f;
+    public static float carrierSenseThreshold = 0.25f;
+    public static int maxPeakFalling = chirpOption.NumSamplesPerSymbol;
+    // public static int maxPeakFalling = 8;
     public static float smoothedEnergyFactor = 1f / 64f;
 
     public static int eccNums = 5;

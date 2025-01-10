@@ -584,7 +584,7 @@ public static class CommandTask
             new PreambleDetection<float>(
                 preamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
             ),
-            new CarrierQuietSensor<float>(0.25f),
+            new CarrierQuietSensor<float>(Program.carrierSenseThreshold),
             addressSource
         );
 
@@ -760,7 +760,7 @@ public static class CommandTask
         var modSym = new TriSymbol<float>(Program.triOption);
         var demodSym = new LineSymbol<float>(Program.lineOption);
         var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(preamble, modSym);
-        var demodulator = new Demodulator<LineSymbol<float>, float>(demodSym, 71);
+        var demodulator = new Demodulator<LineSymbol<float>, float, byte>(demodSym, byte.MaxValue);
 
         await using var phyDuplex = new CSMAPhy<float>(
             audioIn,
@@ -770,7 +770,7 @@ public static class CommandTask
             new PreambleDetection<float>(
                 preamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
             ),
-            new CarrierQuietSensor<float>(0.5f),
+            new CarrierQuietSensor<float>(Program.carrierSenseThreshold),
             addressSource
         );
 
