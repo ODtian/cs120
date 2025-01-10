@@ -276,11 +276,11 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             }
         } while (retry++ < 1000000);
 
-        await channelRxRaw.Writer.WriteAsync(
-            new ReadOnlySequence<byte>([]).MacEncode(new(
-            ) { Source = to, Dest = from, Type = MacFrame.FrameType.Ack, SequenceNumber = (byte)slot }),
-            ct
-        );
+        // await channelRxRaw.Writer.WriteAsync(
+        //     new ReadOnlySequence<byte>([]).MacEncode(new(
+        //     ) { Source = to, Dest = from, Type = MacFrame.FrameType.Ack, SequenceNumber = (byte)slot }),
+        //     ct
+        // );
     }
 
     public ValueTask CompleteAsync(Exception? exception) => outChannel.CompleteAsync(exception);
@@ -305,6 +305,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                 RxWriter.TryComplete();
             else
             {
+                Console.WriteLine(e);
                 ackSource.PulseAll(e);
                 RxWriter.TryComplete(e);
             }
@@ -312,15 +313,22 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     }
     private async Task FillChannelAsync()
     {
-        while (true)
+        try
         {
-            var packet = await inChannel.ReadAsync(cts.Token);
-            if (packet.IsEmpty)
+            while (true)
             {
-                channelRxRaw.Writer.TryComplete();
-                break;
+                var packet = await inChannel.ReadAsync(cts.Token);
+                if (packet.IsEmpty)
+                {
+                    channelRxRaw.Writer.TryComplete();
+                    break;
+                }
+                await channelRxRaw.Writer.WriteAsync(packet);
             }
-            await channelRxRaw.Writer.WriteAsync(packet);
+        }
+        catch (Exception e)
+        {
+            channelRxRaw.Writer.TryComplete(e);
         }
     }
 
@@ -330,10 +338,16 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     }
     private async Task HandleReceiveAsync()
     {
-        _ = FillChannelAsync();
+        // _ = FillChannelAsync();
         // var quiet = new byte[0];
-        await foreach (var packet in channelRxRaw.Reader.ReadAllAsync(cts.Token))
+        // await foreach (var packet in channelRxRaw.Reader.ReadAllAsync(cts.Token))
+        // while (true)
+        while (true)
+        // do
         {
+            var packet = await inChannel.ReadAsync(cts.Token);
+            if (packet.IsEmpty)
+                break;
             var payload = packet.MacDecode(out var header);
             if (header.Dest == from)
             {

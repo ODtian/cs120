@@ -99,24 +99,24 @@ public static class ModulateHelper
         return result;
     }
 
-    public static void DotProductDemodulateByte(ReadOnlySpan<float> samples, ReadOnlySpan<float> symbol, Span<byte> dst)
-    {
-        dst.Clear();
-        for (int i = 0; i < dst.Length; i++)
-        {
-            for (int j = 0; j < 8; j++)
-            {
+    // public static void DotProductDemodulateByte(ReadOnlySpan<float> samples, ReadOnlySpan<float> symbol, Span<byte> dst)
+    // {
+    //     dst.Clear();
+    //     for (int i = 0; i < dst.Length; i++)
+    //     {
+    //         for (int j = 0; j < 8; j++)
+    //         {
 
-                var energy = 0f;
-                for (int k = 0; k < symbol.Length; k++)
-                {
-                    energy += samples[k + j * symbol.Length] * symbol[k];
-                }
+    //             var energy = 0f;
+    //             for (int k = 0; k < symbol.Length; k++)
+    //             {
+    //                 energy += samples[k + j * symbol.Length] * symbol[k];
+    //             }
 
-                dst[i] |= energy < 0f ? (byte)(1 << j) : (byte)0;
-            }
-        }
-    }
+    //             dst[i] |= energy < 0f ? (byte)(1 << j) : (byte)0;
+    //         }
+    //     }
+    // }
 
     public static ReadOnlyMemory<float> GetModulateSamples(
         ReadOnlyMemory<ReadOnlyMemory<float>> symbol, byte data, int bitOffset

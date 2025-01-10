@@ -544,7 +544,7 @@ public class TXPhy<TSample>(IOutChannel<ReadOnlySequence<TSample>> outChannel, I
 
 public class CSMAPhy<TSample>
     : IOutChannel<ReadOnlySequence<byte>>, IInChannel<ReadOnlySequence<byte>>, IAsyncDisposable
-    where TSample : INumber<TSample>
+    where TSample : unmanaged, INumber<TSample>
 {
 
     private readonly AsyncExclusiveLock sendLock = new();
@@ -572,6 +572,8 @@ public class CSMAPhy<TSample>
     private ChannelReader<ReadOnlySequence<byte>> RxReader => channelRx.Reader;
     private ChannelWriter<ReadOnlySequence<byte>> RxWriter => channelRx.Writer;
     private int seed;
+    private readonly List<TSample[]> samples2 = [];
+    private readonly List<TSample[]> samples = [];
 
     public bool IsCompleted => RxReader.IsFinished();
     public CSMAPhy(
@@ -639,6 +641,7 @@ public class CSMAPhy<TSample>
 
             // var writer = new ArrayBufferWriter<TSample>();
             modulator.TryRead(ref data, sequence);
+            samples2.Add(sequence.AsReadOnlySequence.ToArray());
 
             await samplesOut.WriteAsync(sequence.AsReadOnlySequence, linked.Token);
             sequence.Reset();
@@ -654,6 +657,21 @@ public class CSMAPhy<TSample>
         await cts.CancelAsync();
         await processTask.WaitAsync(CancellationToken.None);
         cts.Dispose();
+
+        if (samples.Count > 0 && true)
+        {
+            var length = samples.Select(x => x.Length).Max();
+            var samplesResize = samples.Select(x => x.Concat(Enumerable.Repeat(default(TSample), length - x.Length)));
+            var mat = Matrix<TSample>.Build.DenseOfRows(samplesResize);
+            MatlabWriter.Write("../matlab/receive.mat", mat, $"audio_rec");
+        }
+        if (samples2.Count > 0 && true)
+        {
+            var length = samples2.Select(x => x.Length).Max();
+            var samplesResize = samples2.Select(x => x.Concat(Enumerable.Repeat(default(TSample), length - x.Length)));
+            var mat = Matrix<TSample>.Build.DenseOfRows(samplesResize);
+            MatlabWriter.Write("../matlab/receive2.mat", mat, $"audio_rec");
+        }
     }
 
     private async Task RunProcessAsync()
@@ -700,6 +718,9 @@ public class CSMAPhy<TSample>
             {
                 samplesIn.AdvanceTo(seq.Start);
                 var writer = new ArrayBufferWriter<byte>();
+
+                var count = samples.Count;
+                samples.Add(seq.ToArray());
                 while (!demodulator.TryRead(ref seq, writer))
                 {
                     if (result.IsCompleted)
@@ -712,6 +733,7 @@ public class CSMAPhy<TSample>
                     // if (quiet)
                     //     quietTrigger.Signal();
                     seq = result.Buffer;
+                    samples[count] = seq.ToArray();
                 }
                 // Console.WriteLine(DateTime.Now - ts);
                 // await samplesOut.WriteAsync(new ReadOnlySequence<TSample>(buf), cts.Token);

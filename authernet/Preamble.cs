@@ -11,18 +11,29 @@ using NAudio.Wave;
 
 namespace CS120.Preamble;
 public interface IPreamble<TSample>
-    where TSample : INumber<TSample>
-{
+    where TSample : INumber<TSample> {
     ReadOnlyMemory<TSample> Samples { get; }
     // static abstract IPreamble Create(WaveFormat waveFormat);
 }
 
-public class ChirpPreamble<TSample>(ChirpSymbol<TSample> symbols) : IPreamble<TSample>
+public class ChirpPreamble<TSample>(ChirpSymbol2<TSample> symbols) : IPreamble<TSample>
     where TSample : INumber<TSample>
 
 {
-    public ReadOnlyMemory<TSample> Samples { get; } =
-        new([.. symbols.Samples.Span[0].Span, .. symbols.Samples.Span[1].Span]);
+    public ReadOnlyMemory<TSample> Samples { get; } = new([
+            ..symbols.Samples.Span[0]
+            .Span,
+            ..symbols.Samples.Span[1]
+            .Span,
+        // TSample.One,
+        // TSample.One,
+        // TSample.One,
+        // TSample.One,
+        // TSample.One,
+        // TSample.One,
+        // TSample.One,
+        // TSample.One
+    ]);
 }
 
 public class WarmupPreamble<TSymbol, TSample> : IPreamble<TSample>
@@ -204,6 +215,7 @@ public class PreambleDetection<TSample>(
         if (restNum == 0)
         {
             inSeq = inSeq.Slice(examed + preambleLength - maxPeakFalling);
+            Console.WriteLine("Found");
             // found = true;
             // ArrayPool<TSample>.Shared.Return(buffer);
             // return true;
