@@ -678,7 +678,7 @@ public static class CommandTask
                     if (ipPacket.Protocol is ProtocolType.Icmp ||
                         (ipPacket.Protocol is ProtocolType.Udp &&
                          ipPacket.PayloadPacket as UdpPacket is { DestinationPort : 53 } or { SourcePort : 53 } &&
-                         DnsMessage.Parse(ipPacket.PayloadPacket.PayloadPacket.PayloadData)
+                         DnsMessage.Parse(ipPacket.PayloadPacket.PayloadData)
                              .Questions[0]
                              .Name.Equals(new(["example", "com"]))))
                     {
