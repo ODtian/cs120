@@ -699,10 +699,10 @@ public class CSMAPhy<TSample>
         {
 
             var result = await samplesIn.ReadAsync(cts.Token);
-            var originalLength = seq.Length;
+            // var originalLength = seq.Length;
             seq = result.Buffer;
-            var x = seq.Slice(originalLength);
-            quiet = !carrierSensor.TrySearch(ref x);
+            // var x = seq.Slice(originalLength);
+            quiet = !carrierSensor.TrySearch(ref seq);
             // Console.WriteLine(quiet);
             // if (quiet && new Random().NextSingle() < 0.5)
             if (quiet)
