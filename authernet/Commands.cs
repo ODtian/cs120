@@ -670,42 +670,42 @@ public static class CommandTask
     public static async Task
     AdapterTaskAsync(byte addressSource, byte addressDest, int render, int capture, string adapterName, int guidIndex)
     {
-        // using var adapter = Adapter.Create(adapterName, adapterName, guids[guidIndex]);
-        // using var session = adapter.StartSession(0x40000);
+        using var adapter = Adapter.Create(adapterName, adapterName, guids[guidIndex]);
+        using var session = adapter.StartSession(0x40000);
         var tx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
         var rx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
         using var cts = new CancelKeyPressCancellationTokenSource(new());
 
         async Task TunTxAsync()
         {
-            goto x;
-            // while (true)
-            // {
-            //     cts.Source.Token.ThrowIfCancellationRequested();
-            //     if (session.ReceivePacket(out var packet))
-            //     {
-            //         // for (var i = 0; i < packet.Span.Length; i++)
-            //         // {
-            //         //     Console.Write($"{packet.Span[i]:X2} ");
-            //         // }
-            //         // Console.WriteLine();
-            //         var packetArr = packet.Span.ToArray();
-            //         var ipPacket = new IPv4Packet(new(packetArr));
-            //         if (ipPacket.Protocol is ProtocolType.Icmp)
-            //         {
-            //             Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
-            //             Console.WriteLine();
-            //             await tx.Writer.WriteAsync(new(packetArr), cts.Source.Token);
-            //         }
-            //         // rx.TryWrite(packetArr);
-            //         session.ReleaseReceivePacket(packet);
-            //     }
-            //     else
-            //         session.WaitForRead(TimeSpan.MaxValue);
-            //     // session.WaitForRead(TimeSpan.FromMilliseconds(20));
-            // }
-        x:
-            await tx.Writer.WriteAsync(new(Enumerable.Repeat<byte>(0x00, 64).ToArray()), cts.Source.Token);
+            // goto x;
+            while (true)
+            {
+                cts.Source.Token.ThrowIfCancellationRequested();
+                if (session.ReceivePacket(out var packet))
+                {
+                    // for (var i = 0; i < packet.Span.Length; i++)
+                    // {
+                    //     Console.Write($"{packet.Span[i]:X2} ");
+                    // }
+                    // Console.WriteLine();
+                    var packetArr = packet.Span.ToArray();
+                    var ipPacket = new IPv4Packet(new(packetArr));
+                    if (ipPacket.Protocol is ProtocolType.Icmp)
+                    {
+                        Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+                        Console.WriteLine();
+                        await tx.Writer.WriteAsync(new(packetArr), cts.Source.Token);
+                    }
+                    // rx.TryWrite(packetArr);
+                    session.ReleaseReceivePacket(packet);
+                }
+                else
+                    session.WaitForRead(TimeSpan.MaxValue);
+                // session.WaitForRead(TimeSpan.FromMilliseconds(20));
+            }
+            // x:
+            //     await tx.Writer.WriteAsync(new(Enumerable.Repeat<byte>(0x00, 64).ToArray()), cts.Source.Token);
         }
 
         async Task TunRxAsync()
