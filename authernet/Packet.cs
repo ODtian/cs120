@@ -309,13 +309,13 @@ public static class PacketExtension
     public static ReadOnlySequence<byte> CrcDecode(this ReadOnlySequence<byte> packet, out bool valid)
     {
         var crc = new Crc32();
-        foreach (var seg in packet)
+        var result = packet.Slice(0, packet.Length - 4);
+        foreach (var seg in result)
             crc.Append(seg.Span);
-        // new SequenceReader<byte>(packet).TryReadLittleEndian(out short hash);
         Span<byte> hash = stackalloc byte[4];
         packet.Slice(packet.Length - 4).CopyTo(hash);
         valid = crc.GetCurrentHashAsUInt32() == BinaryPrimitives.ReadUInt32LittleEndian(hash);
-        return packet.Slice(0, packet.Length - 4);
+        return result;
     }
 }
 
