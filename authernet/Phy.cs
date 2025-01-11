@@ -735,7 +735,11 @@ public class CSMAPhy<TSample, TLength>
                 Console.WriteLine("//// Receive");
                 Console.WriteLine(Convert.ToHexString(data.ToArray()));
                 // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-                data = data.LengthDecode<TLength>(out var lengthValid).CrcDecode(out var eccValid);
+                data = data.LengthDecode<TLength>(out var lengthValid);
+
+                var eccValid = false;
+                if (lengthValid)
+                    data = data.CrcDecode(out eccValid);
 
                 // .RSDecode(Program.eccNums, out var eccValid);
                 data.MacGet(out var mac);

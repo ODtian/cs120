@@ -690,8 +690,6 @@ public static class CommandTask
                     IPAddress.Parse("93.184.215.14");
                     if (isIcmp || isDns || isTcp)
                     {
-                        Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
-                        Console.WriteLine();
                         if (isTcp && ipPacket.PayloadPacket is TcpPacket tcp &&
                             tcp is { Synchronize : true, Acknowledgment : false })
                         {
@@ -699,6 +697,8 @@ public static class CommandTask
                             tcp.UpdateTcpChecksum();
                             packetArr = ipPacket.Bytes;
                         }
+                        Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
+                        Console.WriteLine();
                         await tx.Writer.WriteAsync(new(packetArr), cts.Source.Token);
                     }
                     // rx.TryWrite(packetArr);
