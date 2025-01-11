@@ -26,6 +26,7 @@ using CS120.Utils.Extension;
 using CommunityToolkit.HighPerformance;
 using CS120.Utils.IO;
 using ARSoft.Tools.Net.Dns;
+using CS120.Tcp;
 namespace CS120.Commands;
 
 public static class CommandTask
@@ -651,14 +652,23 @@ public static class CommandTask
         await Task.Run(Run);
     }
 
-    public static async Task
-    AdapterTaskAsync(byte addressSource, byte addressDest, int render, int capture, string adapterName, int guidIndex)
+    public static async Task AdapterTaskAsync(
+        byte addressSource,
+        byte addressDest,
+        int render,
+        int capture,
+        string adapterName,
+        int guidIndex,
+        uint? seqHijack
+    )
     {
         using var adapter = Adapter.Create(adapterName, adapterName, guids[guidIndex]);
         using var session = adapter.StartSession(0x40000);
         var tx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
         var rx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
         using var cts = new CancelKeyPressCancellationTokenSource(new());
+
+        var seqHijackProxy = seqHijack.HasValue ? new SeqHijack(seqHijack.Value) : null;
 
         async Task TunTxAsync()
         {
@@ -673,8 +683,7 @@ public static class CommandTask
                     //     Console.Write($"{packet.Span[i]:X2} ");
                     // }
                     // Console.WriteLine();
-                    var packetArr = packet.Span.ToArray();
-                    var ipPacket = new IPv4Packet(new(packetArr));
+                    var ipPacket = new IPv4Packet(new(packet.Span.ToArray()));
 
                     bool isIcmp = ipPacket.Protocol is ProtocolType.Icmp;
                     bool isDns = ipPacket.Protocol is ProtocolType.Udp &&
@@ -687,19 +696,25 @@ public static class CommandTask
                                  (ipPacket.SourceAddress.Equals(IPAddress.Parse("93.184.215.14")) ||
                                   ipPacket.DestinationAddress.Equals(IPAddress.Parse("93.184.215.14")));
 
-                    IPAddress.Parse("93.184.215.14");
                     if (isIcmp || isDns || isTcp)
                     {
-                        if (isTcp && ipPacket.PayloadPacket is TcpPacket tcp &&
-                            tcp is { Synchronize : true, Acknowledgment : false })
+                        if (isTcp && ipPacket.PayloadPacket is TcpPacket tcp && seqHijackProxy is not null)
                         {
-                            tcp.SequenceNumber = 0x12345678;
-                            tcp.UpdateTcpChecksum();
-                            packetArr = ipPacket.Bytes;
+                            if (tcp.Acknowledgment)
+                                seqHijackProxy.Init(tcp);
+
+                            seqHijackProxy.Send(tcp);
                         }
+                        // if (isTcp && ipPacket.PayloadPacket is TcpPacket tcp &&
+                        //     tcp is { Synchronize : true, Acknowledgment : false })
+                        // {
+                        //     tcp.SequenceNumber = 0x12345678;
+                        //     tcp.UpdateTcpChecksum();
+                        //     packetArr = ipPacket.Bytes;
+                        // }
                         Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
                         Console.WriteLine();
-                        await tx.Writer.WriteAsync(new(packetArr), cts.Source.Token);
+                        await tx.Writer.WriteAsync(new(ipPacket.Bytes), cts.Source.Token);
                     }
                     // rx.TryWrite(packetArr);
                     session.ReleaseReceivePacket(packet);
@@ -717,6 +732,9 @@ public static class CommandTask
             await foreach (var data in rx.Reader.ReadAllAsync(cts.Source.Token))
             {
                 var ipPacket = new IPv4Packet(new(data.ToArray()));
+                if (ipPacket.Protocol is ProtocolType.Tcp && ipPacket.PayloadPacket is TcpPacket tcp)
+                    seqHijackProxy?.Receive(tcp);
+
                 Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
                 // foreach (var b in data.GetElements())
                 //     Console.Write($"{b:X2} ");
@@ -1095,6 +1113,9 @@ public static class CommandBuilder
         var guidIndexOption =
             new Option<int>(name: "--guid", description: "The guid index to use", getDefaultValue: () => 0);
 
+        var seqHijackOption = new Option < uint
+            ? > (name: "--seq-hijack", description: "Hijack sequence number", getDefaultValue: () => null);
+
         command.AddArgument(addressSourceArgument);
         command.AddArgument(addressDestArgument);
         command.AddOption(txOption);
@@ -1108,7 +1129,8 @@ public static class CommandBuilder
             txOption,
             rxOption,
             adapterNameOption,
-            guidIndexOption
+            guidIndexOption,
+            seqHijackOption
         );
 
         return command;
