@@ -738,8 +738,8 @@ public static class CommandTask
                 Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
                 // foreach (var b in data.GetElements())
                 //     Console.Write($"{b:X2} ");
-                session.AllocateSendPacket((uint)data.Length, out var send);
-                data.CopyTo(send.Span);
+                session.AllocateSendPacket((uint)ipPacket.TotalLength, out var send);
+                ipPacket.Bytes.CopyTo(send.Span);
                 session.SendPacket(send);
             }
         }
