@@ -683,7 +683,11 @@ public static class CommandTask
                                  DnsMessage.Parse(ipPacket.PayloadPacket.PayloadData)
                                      .Questions[0]
                                      .Name.Equals(new(["example", "com"]));
-                    bool isTcp = ipPacket.Protocol is ProtocolType.Tcp;
+                    bool isTcp = ipPacket.Protocol is ProtocolType.Tcp &&
+                                 (ipPacket.SourceAddress.Equals(IPAddress.Parse("93.184.215.14")) ||
+                                  ipPacket.DestinationAddress.Equals(IPAddress.Parse("93.184.215.14")));
+
+                    IPAddress.Parse("93.184.215.14");
                     if (isIcmp || isDns || isTcp)
                     {
                         Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
