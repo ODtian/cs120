@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Buffers.Binary;
+using System.IO.Hashing;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -160,7 +162,7 @@ namespace CS120.Packet;
 public static class PackHelper
 {
     public static T ReadBinaryLittleEndian<T>(this ReadOnlySequence<byte> packet, bool isUnsigned)
-    where T : IBinaryInteger<T>
+        where T : IBinaryInteger<T>
     {
         T val;
         if (packet.First.Length < BinaryIntegerTrait<T>.Size)
@@ -199,7 +201,7 @@ public static class PacketExtension
     }
 
     public static ReadOnlySequence<byte> LengthEncode<T>(this ReadOnlySequence<byte> packet, int? padding = null)
-    where T : IBinaryInteger<T>
+        where T : IBinaryInteger<T>
     {
         var length = T.CreateChecked(packet.Length + BinaryIntegerTrait<T>.Size);
         var header = new byte[BinaryIntegerTrait<T>.Size];
@@ -216,7 +218,7 @@ public static class PacketExtension
     }
 
     public static ReadOnlySequence<byte> LengthDecode<T>(this ReadOnlySequence<byte> packet, out bool valid)
-    where T : IBinaryInteger<T>
+        where T : IBinaryInteger<T>
     {
         packet.LengthGet<T>(out valid, out var length);
         length -= BinaryIntegerTrait<T>.Size;
@@ -226,8 +228,10 @@ public static class PacketExtension
         return result;
     }
 
-    public static ReadOnlySequence<byte> LengthGet<T>(this ReadOnlySequence<byte> packet, out bool valid, out int length)
-    where T : IBinaryInteger<T>
+    public static ReadOnlySequence<byte> LengthGet<T>(
+        this ReadOnlySequence<byte> packet, out bool valid, out int length
+    )
+        where T : IBinaryInteger<T>
     {
         length = int.CreateChecked(packet.ReadBinaryLittleEndian<T>(true));
         valid = length <= packet.Length;
@@ -288,6 +292,30 @@ public static class PacketExtension
         else
             mac = MemoryMarshal.Read<MacFrame>(packet.FirstSpan);
         return packet;
+    }
+
+    public static ReadOnlySequence<byte> CrcEncode(this ReadOnlySequence<byte> packet)
+    {
+        var crc = new Crc32();
+        foreach (var seg in packet)
+            crc.Append(seg.Span);
+
+        var result = new ChunkedSequence<byte>();
+        result.Append(packet);
+        result.Append(crc.GetCurrentHash());
+        return result;
+    }
+
+    public static ReadOnlySequence<byte> CrcDecode(this ReadOnlySequence<byte> packet, out bool valid)
+    {
+        var crc = new Crc32();
+        foreach (var seg in packet)
+            crc.Append(seg.Span);
+        // new SequenceReader<byte>(packet).TryReadLittleEndian(out short hash);
+        Span<byte> hash = stackalloc byte[4];
+        packet.Slice(packet.Length - 4).CopyTo(hash);
+        valid = crc.GetCurrentHashAsUInt32() == BinaryPrimitives.ReadUInt32LittleEndian(hash);
+        return packet.Slice(0, packet.Length - 4);
     }
 }
 
