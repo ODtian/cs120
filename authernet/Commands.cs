@@ -700,7 +700,7 @@ public static class CommandTask
                     {
                         if (isTcp && ipPacket.PayloadPacket is TcpPacket tcp && seqHijackProxy is not null)
                         {
-                            if (tcp.Acknowledgment)
+                            if (tcp.Synchronize)
                                 seqHijackProxy.Init(tcp);
 
                             seqHijackProxy.Send(tcp);
@@ -1122,6 +1122,7 @@ public static class CommandBuilder
         command.AddOption(rxOption);
         command.AddOption(adapterNameOption);
         command.AddOption(guidIndexOption);
+        command.AddOption(seqHijackOption);
         command.SetHandler(
             CommandTask.AdapterTaskAsync,
             addressSourceArgument,

@@ -245,6 +245,7 @@ public static class PacketExtension
     {
         valid = packet.TryReadBinaryLittleEndian(out T val, true);
         length = int.CreateChecked(val);
+        valid = valid && length <= packet.Length;
 
         return packet;
     }
