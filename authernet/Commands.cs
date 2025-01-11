@@ -675,15 +675,26 @@ public static class CommandTask
                     // Console.WriteLine();
                     var packetArr = packet.Span.ToArray();
                     var ipPacket = new IPv4Packet(new(packetArr));
-                    if (ipPacket.Protocol is ProtocolType.Icmp ||
-                        (ipPacket.Protocol is ProtocolType.Udp &&
-                         ipPacket.PayloadPacket as UdpPacket is { DestinationPort : 53 } or { SourcePort : 53 } &&
-                         DnsMessage.Parse(ipPacket.PayloadPacket.PayloadData)
-                             .Questions[0]
-                             .Name.Equals(new(["example", "com"]))))
+
+                    bool isIcmp = ipPacket.Protocol is ProtocolType.Icmp;
+                    bool isDns = ipPacket.Protocol is ProtocolType.Udp &&
+                                 ipPacket.PayloadPacket as UdpPacket is { DestinationPort : 53 }
+                                 or { SourcePort : 53 } &&
+                                 DnsMessage.Parse(ipPacket.PayloadPacket.PayloadData)
+                                     .Questions[0]
+                                     .Name.Equals(new(["example", "com"]));
+                    bool isTcp = ipPacket.Protocol is ProtocolType.Tcp;
+                    if (isIcmp || isDns || isTcp)
                     {
                         Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
                         Console.WriteLine();
+                        if (isTcp && ipPacket.PayloadPacket is TcpPacket tcp &&
+                            tcp is { Synchronize : true, Acknowledgment : false })
+                        {
+                            tcp.SequenceNumber = 0x12345678;
+                            tcp.UpdateTcpChecksum();
+                            packetArr = ipPacket.Bytes;
+                        }
                         await tx.Writer.WriteAsync(new(packetArr), cts.Source.Token);
                     }
                     // rx.TryWrite(packetArr);
