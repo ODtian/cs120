@@ -221,11 +221,9 @@ public static class PacketExtension
         where T : IBinaryInteger<T>
     {
         packet.LengthGet<T>(out valid, out var length);
-        length -= BinaryIntegerTrait<T>.Size;
-
-        var result = packet.Slice(BinaryIntegerTrait<T>.Size, length);
-
-        return result;
+        if (valid)
+            return packet.Slice(BinaryIntegerTrait<T>.Size, length - BinaryIntegerTrait<T>.Size);
+        return packet;
     }
 
     public static ReadOnlySequence<byte> LengthGet<T>(

@@ -735,9 +735,10 @@ public class CSMAPhy<TSample, TLength>
                 Console.WriteLine("//// Receive");
                 Console.WriteLine(Convert.ToHexString(data.ToArray()));
                 // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-                var payload = data.LengthDecode<TLength>(out var lengthValid).CrcDecode(out var eccValid);
+                data = data.LengthDecode<TLength>(out var lengthValid).CrcDecode(out var eccValid);
+
                 // .RSDecode(Program.eccNums, out var eccValid);
-                payload.MacGet(out var mac);
+                data.MacGet(out var mac);
                 Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
                 Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
                 Console.WriteLine("////");
@@ -745,7 +746,7 @@ public class CSMAPhy<TSample, TLength>
 
                 if (lengthValid && eccValid)
                 {
-                    await RxWriter.WriteAsync(payload);
+                    await RxWriter.WriteAsync(data);
                 }
             }
             else if (result.IsCompleted)
