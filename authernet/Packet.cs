@@ -161,6 +161,18 @@ namespace CS120.Packet;
 // }
 public static class PackHelper
 {
+    public static bool TryReadBinaryLittleEndian<T>(this ReadOnlySequence<byte> packet, out T val, bool isUnsigned)
+        where T : IBinaryInteger<T>
+    {
+        if (packet.Length < BinaryIntegerTrait<T>.Size)
+        {
+            val = T.Zero;
+            return false;
+        }
+        val = packet.ReadBinaryLittleEndian<T>(isUnsigned);
+        return true;
+    }
+
     public static T ReadBinaryLittleEndian<T>(this ReadOnlySequence<byte> packet, bool isUnsigned)
         where T : IBinaryInteger<T>
     {
@@ -169,10 +181,10 @@ public static class PackHelper
         {
             Span<byte> buffer = stackalloc byte[BinaryIntegerTrait<T>.Size];
             packet.Slice(0, BinaryIntegerTrait<T>.Size).CopyTo(buffer);
-            val = T.CreateChecked(T.ReadLittleEndian(buffer, isUnsigned));
+            val = T.ReadLittleEndian(buffer, isUnsigned);
         }
         else
-            val = T.CreateChecked(T.ReadLittleEndian(packet.FirstSpan[..BinaryIntegerTrait<T>.Size], isUnsigned));
+            val = T.ReadLittleEndian(packet.FirstSpan[..BinaryIntegerTrait<T>.Size], isUnsigned);
 
         return val;
     }
@@ -231,8 +243,9 @@ public static class PacketExtension
     )
         where T : IBinaryInteger<T>
     {
-        length = int.CreateChecked(packet.ReadBinaryLittleEndian<T>(true));
-        valid = length <= packet.Length;
+        valid = packet.TryReadBinaryLittleEndian(out T val, true);
+        length = int.CreateChecked(val);
+
         return packet;
     }
 
