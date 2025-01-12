@@ -782,7 +782,7 @@ public static class CommandTask
         var modSym = new TriSymbol<float>(Program.triOption);
         var demodSym = new LineSymbol<float>(Program.lineOption);
         var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(preamble, modSym);
-        var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 1024);
+        var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 1600);
 
         await using var phyDuplex = new CSMAPhy<float, ushort>(
             audioIn,
