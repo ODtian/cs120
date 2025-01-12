@@ -687,18 +687,16 @@ public class CSMAPhy<TSample, TLength>
     {
         // var buf = new TSample[480];
         // buf.AsSpan().Fill(TSample.One * TSample.CreateChecked(1));
-        ReadOnlySequence<TSample> seq = default;
         while (true)
         {
 
             var result = await samplesIn.ReadAsync(cts.Token);
             // var originalLength = seq.Length;
-            seq = result.Buffer;
+            var seq = result.Buffer;
             // var x = seq.Slice(originalLength);
-            quiet = !carrierSensor.TrySearch(ref seq);
             // Console.WriteLine(quiet);
             // if (quiet && new Random().NextSingle() < 0.5)
-            if (quiet)
+            if (!carrierSensor.TrySearch(ref seq))
                 quietTrigger.Signal();
             // if (carrierSensor.TrySearch(ref seq) == quiet)
             // {

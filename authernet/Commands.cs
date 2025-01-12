@@ -585,7 +585,7 @@ public static class CommandTask
         {
             // { wave.Write(e.Buffer, 0, e.BytesRecorded); };
             var index = 0;
-            await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 512, binaryTxt, cts.Source.Token))
+            await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 128, binaryTxt, cts.Source.Token))
             {
                 await mac.WriteAsync(new ReadOnlySequence<byte>(packet).IDEncode<byte>(index++), cts.Source.Token);
                 // await Task.Delay(200);
