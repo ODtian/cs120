@@ -320,6 +320,11 @@ public static class PacketExtension
 
     public static ReadOnlySequence<byte> CrcDecode(this ReadOnlySequence<byte> packet, out bool valid)
     {
+        if (packet.Length < 4)
+        {
+            valid = false;
+            return packet;
+        }
         var crc = new Crc32();
         var result = packet.Slice(0, packet.Length - 4);
         foreach (var seg in result)
