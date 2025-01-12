@@ -559,9 +559,9 @@ public static class CommandTask
         var modSym = new TriSymbol<float>(Program.triOption);
         var demodSym = new LineSymbol<float>(Program.lineOption);
         var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(preamble, modSym);
-        var demodulator = new Demodulator<LineSymbol<float>, float, byte>(demodSym, 255);
+        var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 1600);
 
-        await using var phyDuplex = new CSMAPhy<float, byte>(
+        await using var phyDuplex = new CSMAPhy<float, ushort>(
             audioIn,
             audioOut,
             demodulator,
@@ -585,7 +585,7 @@ public static class CommandTask
         {
             // { wave.Write(e.Buffer, 0, e.BytesRecorded); };
             var index = 0;
-            await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 128, binaryTxt, cts.Source.Token))
+            await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 512, binaryTxt, cts.Source.Token))
             {
                 await mac.WriteAsync(new ReadOnlySequence<byte>(packet).IDEncode<byte>(index++), cts.Source.Token);
                 // await Task.Delay(200);

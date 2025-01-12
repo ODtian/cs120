@@ -34,7 +34,7 @@ class Program
 
     public static ChirpSymbolOption chirpOption = new() {
         NumSymbols = 2,
-        Duration = 0.001f, // Read config or something
+        Duration = 0.0005f, // Read config or something
         SampleRate = 48_000,
         FreqA = 2_000, // Read config or something
         FreqB = 16_000 // Read config or something
