@@ -213,13 +213,10 @@ public class PreambleDetection<TSample>(
         }
 
         if (restNum == 0)
-        {
             inSeq = inSeq.Slice(examed + preambleLength - maxPeakFalling);
-            Console.WriteLine("Found");
-            // found = true;
-            // ArrayPool<TSample>.Shared.Return(buffer);
-            // return true;
-        }
+        // found = true;
+        // ArrayPool<TSample>.Shared.Return(buffer);
+        // return true;
         else if (restNum > 0)
 
             // if (!found)

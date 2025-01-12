@@ -687,11 +687,13 @@ public static class CommandTask
 
                     bool isIcmp = ipPacket.Protocol is ProtocolType.Icmp;
                     bool isDns = ipPacket.Protocol is ProtocolType.Udp &&
-                                 ipPacket.PayloadPacket as UdpPacket is { DestinationPort : 53 }
-                                 or { SourcePort : 53 } &&
-                                 DnsMessage.Parse(ipPacket.PayloadPacket.PayloadData)
-                                     .Questions[0]
-                                     .Name.Equals(new(["example", "com"]));
+                                 ipPacket.PayloadPacket as UdpPacket is { DestinationPort : 53 } or { SourcePort : 53 };
+                    if (isDns)
+                    {
+                        var message = DnsMessage.Parse(ipPacket.PayloadPacket.PayloadData);
+                        isDns = message.Questions[0].Name.Equals(new(["example", "com"])) &&
+                                message.Questions[0].RecordType == RecordType.A;
+                    }
                     bool isTcp = ipPacket.Protocol is ProtocolType.Tcp &&
                                  (ipPacket.SourceAddress.Equals(IPAddress.Parse("93.184.215.14")) ||
                                   ipPacket.DestinationAddress.Equals(IPAddress.Parse("93.184.215.14")));

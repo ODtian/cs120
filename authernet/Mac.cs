@@ -221,6 +221,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         var random = new Random();
         while (true)
         {
+            Console.WriteLine($"Send {slot}");
             await outChannel.WriteAsync(
                 data.MacEncode(new(
                 ) { Source = from, Dest = to, SequenceNumber = (byte)slot, AckNumber = (byte)LastDataReceived }),
@@ -231,7 +232,6 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             //     ) { Source = from, Dest = to, Type = MacFrame.FrameType.Data, SequenceNumber = (byte)slot }),
             //     ct
             // );
-            Console.WriteLine($"Send {slot}");
             try
             {
                 await task.WaitAsync(TimeSpan.FromMilliseconds(500) * (random.NextSingle() * 0.5f + 0.5f), ct);
