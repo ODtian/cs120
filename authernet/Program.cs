@@ -50,7 +50,7 @@ class Program
         NumSamplesPerSymbol = 2,
     };
 
-    public static float corrThreshold = 0.2f;
+    public static float corrThreshold = 0.4f;
     public static float carrierSenseThreshold = 0.25f;
     public static int maxPeakFalling = chirpOption.NumSamplesPerSymbol;
     // public static int maxPeakFalling = 8;

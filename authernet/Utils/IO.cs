@@ -237,10 +237,10 @@ public class AudioMonoInStream<TSample> : IInStream<TSample>, IAsyncDisposable
                                                                           _ => throw new NotSupportedException() };
         // Console.WriteLine(length);
 
-        // for (int i = 0; i < args.SamplesPerBuffer; i++)
-        // {
-        //     Console.Write(z[i]);
-        // }
+        // // for (int i = 0; i < args.SamplesPerBuffer; i++)
+        // // {
+        // //     Console.Write(z[i]);
+        // // }
         Writer.Write(new Span<byte>((byte *)args.InputBuffers[channel], length));
         Writer.FlushAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
     }

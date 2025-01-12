@@ -10,6 +10,7 @@ using DotNext.Threading;
 namespace CS120.Mac;
 
 public struct MacFrame
+()
 {
     // public enum FrameType
     // {
@@ -18,6 +19,7 @@ public struct MacFrame
     //     Nack = 2,
     //     Beacon = 3
     // }
+    // private byte x = 0xff;
     private byte source;
     private byte dest;
     private byte sequenceAndAckNumber;
@@ -234,7 +236,9 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             // );
             try
             {
-                await task.WaitAsync(TimeSpan.FromMilliseconds(500) * (random.NextSingle() * 0.5f + 0.5f), ct);
+                await task.WaitAsync(TimeSpan.FromMilliseconds(100) * (random.NextSingle() * 0.5f + 0.5f), ct);
+                // await Task.Delay(20);
+
                 return;
             }
             catch (TimeoutException)

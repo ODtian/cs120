@@ -178,23 +178,36 @@ public readonly struct TriSymbol<T> : ISymbol<T>
     public TriSymbol(TriSymbolOption symbolOption)
     {
         NumSamplesPerSymbol = symbolOption.NumSamplesPerSymbol;
+
         var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
 
-        var interval = T.CreateChecked(1f / (symbolOption.NumSamplesPerSymbol - 1));
-
         var zero = new T[symbolOption.NumSamplesPerSymbol];
-        for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)
-            zero[i] = T.CreateChecked(-i) * interval;
-
+        zero.AsSpan().Fill(T.CreateChecked(-1));
         result[0] = zero;
 
         var one = new T[symbolOption.NumSamplesPerSymbol];
-        for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)
-            one[i] = T.CreateChecked(i) * interval;
-
+        one.AsSpan().Fill(T.CreateChecked(1));
         result[1] = one;
 
         Samples = result;
+        // NumSamplesPerSymbol = symbolOption.NumSamplesPerSymbol;
+        // var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
+
+        // var interval = T.CreateChecked(1f / (symbolOption.NumSamplesPerSymbol));
+
+        // var zero = new T[symbolOption.NumSamplesPerSymbol];
+        // for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)
+        //     zero[i] = T.CreateChecked(-i) * interval;
+
+        // result[0] = zero;
+
+        // var one = new T[symbolOption.NumSamplesPerSymbol];
+        // for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)
+        //     one[i] = T.CreateChecked(i) * interval;
+
+        // result[1] = one;
+
+        // Samples = result;
     }
 
     public static implicit operator TriSymbol<T>(TriSymbolOption option) => new(option);

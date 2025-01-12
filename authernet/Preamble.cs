@@ -25,14 +25,23 @@ public class ChirpPreamble<TSample>(ChirpSymbol2<TSample> symbols) : IPreamble<T
             .Span,
             ..symbols.Samples.Span[1]
             .Span,
-        // TSample.One,
-        // TSample.One,
-        // TSample.One,
-        // TSample.One,
-        // TSample.One,
-        // TSample.One,
-        // TSample.One,
-        // TSample.One
+            // TSample.One,
+            // TSample.One,
+            // TSample.One,
+            // TSample.One,
+            // TSample.One,
+            // TSample.One,
+            // TSample.One,
+            // TSample.One
+        // TSample.CreateChecked(0.9),
+        // TSample.CreateChecked(0.8),
+        // TSample.CreateChecked(0.7),
+        // TSample.CreateChecked(0.6),
+        // TSample.CreateChecked(0.5),
+        // TSample.CreateChecked(0.4),
+        // TSample.CreateChecked(0.3),
+        // TSample.CreateChecked(0.2),
+        // TSample.CreateChecked(0.1)
     ]);
 }
 
@@ -184,7 +193,7 @@ public class PreambleDetection<TSample>(
             }
             corr /= preambleLengthT;
 
-            if (corr > corrThresholdT && corr > localMaxCorr)
+            if (corr > corrThresholdT && corr > localMaxCorr && corr < TSample.CreateChecked(1.0))
             {
                 // Console.WriteLine("Detected");
                 // Console.WriteLine($"corr {corr}");
