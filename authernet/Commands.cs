@@ -797,9 +797,9 @@ public static class CommandTask
 
         await using var mac = new MacD(phyDuplex, phyDuplex, addressSource, addressDest, 1, 32);
 
-        // var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 2000);
-        // await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
-        // await Task.Delay(500);
+        var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 2000);
+        await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
+        await Task.Delay(500);
         Console.WriteLine("Start");
         async Task MacTxAsync()
         {
