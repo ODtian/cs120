@@ -744,7 +744,9 @@ public class CSMAPhy<TSample, TLength>
                 // .RSDecode(Program.eccNums, out var eccValid);
                 data.MacGet(out var mac);
                 Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-                Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
+                Console.WriteLine(
+                    $"Receive mac {mac.Source} to {mac.Dest} of Seq {mac.SequenceNumber} Ack {mac.AckNumber}"
+                );
                 Console.WriteLine("////");
                 Console.WriteLine();
 

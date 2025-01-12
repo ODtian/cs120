@@ -11,17 +11,16 @@ namespace CS120.Mac;
 
 public struct MacFrame
 {
-    public enum FrameType
-    {
-        Data = 0,
-        Ack = 1,
-        Nack = 2,
-        Beacon = 3
-    }
-
+    // public enum FrameType
+    // {
+    //     Data = 0,
+    //     Ack = 1,
+    //     Nack = 2,
+    //     Beacon = 3
+    // }
     private byte source;
     private byte dest;
-    private byte typeAndsequenceNumber;
+    private byte sequenceAndAckNumber;
 
     public byte Source
     {
@@ -33,26 +32,60 @@ public struct MacFrame
         readonly get => dest;
         set => dest = value;
     }
-
-    public FrameType Type
-    {
-        readonly get => (FrameType)(typeAndsequenceNumber >> 6);
-        set
-        {
-            typeAndsequenceNumber &= 0b0011_1111;
-            typeAndsequenceNumber |= (byte)((byte)value << 6);
-        }
-    }
-
     public byte SequenceNumber
     {
-        readonly get => (byte)(typeAndsequenceNumber & 0b0011_1111);
+        readonly get => (byte)(sequenceAndAckNumber & 0b0000_1111);
         set
         {
-            typeAndsequenceNumber &= 0b1100_0000;
-            typeAndsequenceNumber |= (byte)(value & 0b0011_1111);
+            sequenceAndAckNumber &= 0b1111_0000;
+            sequenceAndAckNumber |= (byte)(value & 0b0000_1111);
         }
     }
+    public byte AckNumber
+    {
+        readonly get => (byte)((sequenceAndAckNumber & 0b1111_0000) >> 4);
+        set
+        {
+            sequenceAndAckNumber &= 0b0000_1111;
+            sequenceAndAckNumber |= (byte)((value & 0b0000_1111) << 4);
+        }
+    }
+
+    // private byte ackNumber;
+    // private byte source;
+    // private byte dest;
+    // private byte typeAndsequenceNumber;
+
+    // public byte Source
+    // {
+    //     readonly get => source;
+    //     set => source = value;
+    // }
+    // public byte Dest
+    // {
+    //     readonly get => dest;
+    //     set => dest = value;
+    // }
+
+    // public FrameType Type
+    // {
+    //     readonly get => (FrameType)(typeAndsequenceNumber >> 6);
+    //     set
+    //     {
+    //         typeAndsequenceNumber &= 0b0011_1111;
+    //         typeAndsequenceNumber |= (byte)((byte)value << 6);
+    //     }
+    // }
+
+    // public byte SequenceNumber
+    // {
+    //     readonly get => (byte)(typeAndsequenceNumber & 0b0011_1111);
+    //     set
+    //     {
+    //         typeAndsequenceNumber &= 0b1100_0000;
+    //         typeAndsequenceNumber |= (byte)(value & 0b0011_1111);
+    //     }
+    // }
 }
 
 public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
@@ -130,8 +163,8 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     // }
     private readonly Task receiveTask;
     private readonly CancellationTokenSource cts = new();
-    private int LastAckReceived { get; set; } = -1;
-    private int LastDataReceived { get; set; } = -1;
+    private int LastAckReceived { get; set; }
+    private int LastDataReceived { get; set; }
     private int NextDataNumber => ToSequnceNumber(LastDataReceived + 1);
     // private int NextAck(int ack) => (ack + 1) % sequenceSize;
 
@@ -155,7 +188,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         this.from = from;
         this.to = to;
         this.windowSize = windowSize;
-        this.sequenceSize = sequenceSize;
+        this.sequenceSize = 16;
         this.inChannel = inChannel;
         this.outChannel = outChannel;
 
@@ -171,6 +204,8 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
 
         foreach (var seq in Enumerable.Range(0, windowSize))
             windowSlotChannel.Writer.TryWrite(seq);
+
+        LastAckReceived = LastDataReceived = this.sequenceSize - 1;
     }
 
     public async ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct) => await RxReader.ReadAsync(ct);
@@ -188,9 +223,14 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         {
             await outChannel.WriteAsync(
                 data.MacEncode(new(
-                ) { Source = from, Dest = to, Type = MacFrame.FrameType.Data, SequenceNumber = (byte)slot }),
+                ) { Source = from, Dest = to, SequenceNumber = (byte)slot, AckNumber = (byte)LastDataReceived }),
                 ct
             );
+            // await outChannel.WriteAsync(
+            //     data.MacEncode(new(
+            //     ) { Source = from, Dest = to, Type = MacFrame.FrameType.Data, SequenceNumber = (byte)slot }),
+            //     ct
+            // );
             Console.WriteLine($"Send {slot}");
             try
             {
@@ -252,21 +292,21 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             var payload = packet.MacDecode(out var header);
             if (header.Dest == from)
             {
-                if (header.Type is MacFrame.FrameType.Data)
+                if (ValueInWindowRange(NextAckNumber, header.AckNumber))
+                {
+                    Console.WriteLine($"Receive Ack {header.AckNumber}");
+                    while (LastAckReceived != header.AckNumber)
+                    {
+
+                        ackSource.Pulse(NextAckNumber, null);
+                        LastAckReceived = NextAckNumber;
+                        windowSlotChannel.Writer.TryWrite(LastDataSend);
+                    }
+                }
+
+                if (!payload.IsEmpty)
                 {
                     Console.WriteLine($"Receive Data {header.SequenceNumber}");
-                    var ts = DateTime.Now;
-                    _ = outChannel
-                            .WriteAsync(
-                                new ReadOnlySequence<byte>([]).MacEncode(new(
-                                ) { Source = header.Dest,
-                                    Dest = header.Source,
-                                    Type = MacFrame.FrameType.Ack,
-                                    SequenceNumber = header.SequenceNumber }),
-                                cts.Token
-                            )
-                            .AsTask();
-
                     if (ValueInWindowRange(NextDataNumber, header.SequenceNumber))
                         // Console.WriteLine($"Ack {frame.SequenceNumber} {(DateTime.Now - ts).TotalMilliseconds}");
                         receivedDataCache[header.SequenceNumber] = payload;
@@ -280,24 +320,62 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                             LastDataReceived = NextDataNumber;
                         }
                     }
+                    _ = outChannel
+                            .WriteAsync(
+                                ReadOnlySequence<byte>.Empty.MacEncode(new(
+                                ) { Source = header.Dest, Dest = header.Source, AckNumber = (byte)LastDataReceived }),
+                                cts.Token
+                            )
+                            .AsTask();
                 }
-                else if (header.Type is MacFrame.FrameType.Ack)
-                {
-                    Console.WriteLine($"Receive Ack {header.SequenceNumber}");
-                    ackSource.Pulse(header.SequenceNumber, null);
-                    if (ValueInWindowRange(NextAckNumber, header.SequenceNumber))
-                        receivedAckCache[header.SequenceNumber] = true;
+                // Console.WriteLine($"Ack {frame.SequenceNumber} {(DateTime.Now - ts).TotalMilliseconds}");
+                // receivedAckCache[header.SequenceNumber] = true;
+                // if (header.Type is MacFrame.FrameType.Data)
+                // {
+                //     Console.WriteLine($"Receive Data {header.SequenceNumber}");
+                //     var ts = DateTime.Now;
+                //     _ = outChannel
+                //             .WriteAsync(
+                //                 new ReadOnlySequence<byte>([]).MacEncode(new(
+                //                 ) { Source = header.Dest,
+                //                     Dest = header.Source,
+                //                     Type = MacFrame.FrameType.Ack,
+                //                     SequenceNumber = header.SequenceNumber }),
+                //                 cts.Token
+                //             )
+                //             .AsTask();
 
-                    if (header.SequenceNumber == NextAckNumber)
-                    {
-                        while (receivedAckCache[NextAckNumber])
-                        {
-                            receivedAckCache[NextAckNumber] = false;
-                            LastAckReceived = NextAckNumber;
-                            windowSlotChannel.Writer.TryWrite(LastDataSend);
-                        }
-                    }
-                }
+                //     if (ValueInWindowRange(NextDataNumber, header.SequenceNumber))
+                //         // Console.WriteLine($"Ack {frame.SequenceNumber} {(DateTime.Now - ts).TotalMilliseconds}");
+                //         receivedDataCache[header.SequenceNumber] = payload;
+
+                //     if (header.SequenceNumber == NextDataNumber)
+                //     {
+                //         while (!receivedDataCache[NextDataNumber].IsEmpty)
+                //         {
+                //             await RxWriter.WriteAsync(receivedDataCache[NextDataNumber]);
+                //             receivedDataCache[NextDataNumber] = ReadOnlySequence<byte>.Empty;
+                //             LastDataReceived = NextDataNumber;
+                //         }
+                //     }
+                // }
+                // else if (header.Type is MacFrame.FrameType.Ack)
+                // {
+                //     Console.WriteLine($"Receive Ack {header.SequenceNumber}");
+                //     ackSource.Pulse(header.SequenceNumber, null);
+                //     if (ValueInWindowRange(NextAckNumber, header.SequenceNumber))
+                //         receivedAckCache[header.SequenceNumber] = true;
+
+                //     if (header.SequenceNumber == NextAckNumber)
+                //     {
+                //         while (receivedAckCache[NextAckNumber])
+                //         {
+                //             receivedAckCache[NextAckNumber] = false;
+                //             LastAckReceived = NextAckNumber;
+                //             windowSlotChannel.Writer.TryWrite(LastDataSend);
+                //         }
+                //     }
+                // }
             }
         }
     }
