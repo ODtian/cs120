@@ -234,7 +234,7 @@ public static class PacketExtension
     {
         packet.LengthGet<T>(out valid, out var length);
         if (valid)
-            return packet.Slice(BinaryIntegerTrait<T>.Size, length - BinaryIntegerTrait<T>.Size);
+            return packet.Slice(BinaryIntegerTrait<T>.Size, length -= BinaryIntegerTrait<T>.Size);
         return packet;
     }
 
