@@ -85,35 +85,35 @@ public class CarrierQuietSensor<TSample>(float threshold = 0.05f) : ISequnceSear
 
         // buffer = buffer.Slice(start + 400);
         SequencePosition pos = buffer.Start;
-        while (buffer.TryGet(ref pos, out var next))
-        {
-            if (pos.Equals(default))
-            {
-                for (var i = 0; i < next.Length; i++)
-                {
-                    if (TSample.Abs(next.Span[i]) > threshold)
-                    {
-                        buffer = buffer.Slice(i);
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
         // while (buffer.TryGet(ref pos, out var next))
         // {
-        //     for (var i = 0; i < next.Length; i++)
+        //     if (pos.Equals(default))
         //     {
-        //         // Console.WriteLine($"CarrierQuietSensor1: Found carrier{TSample.Abs(next.Span[i])}");
-        //         if (TSample.Abs(next.Span[i]) > threshold)
+        //         for (var i = 0; i < next.Length; i++)
         //         {
-        //             // Console.WriteLine($"CarrierQuietSensor1: Found carrier {TSample.Abs(next.Span[i])}");
-        //             buffer = buffer.Slice(i);
-        //             return true;
+        //             if (TSample.Abs(next.Span[i]) > threshold)
+        //             {
+        //                 // buffer = buffer.Slice(i);
+        //                 return true;
+        //             }
         //         }
         //     }
-        //     buffer = buffer.Slice(next.Length);
         // }
+        // return false;
+        while (buffer.TryGet(ref pos, out var next))
+        {
+            for (var i = 0; i < next.Length; i++)
+            {
+                // Console.WriteLine($"CarrierQuietSensor1: Found carrier{TSample.Abs(next.Span[i])}");
+                if (TSample.Abs(next.Span[i]) > threshold)
+                {
+                    // Console.WriteLine($"CarrierQuietSensor1: Found carrier {TSample.Abs(next.Span[i])}");
+                    buffer = buffer.Slice(i);
+                    return true;
+                }
+            }
+            buffer = buffer.Slice(next.Length);
+        }
         return false;
     }
 }

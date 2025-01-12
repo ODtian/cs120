@@ -577,7 +577,7 @@ public static class CommandTask
         // await Task.Delay(5000);
         using var inputReader = new StreamReader(Console.OpenStandardInput(), Console.InputEncoding);
         await inputReader.ReadLineAsync();
-        var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 2000);
+        var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 256);
         await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
         // await Task.Delay(500);
 
@@ -585,7 +585,7 @@ public static class CommandTask
         {
             // { wave.Write(e.Buffer, 0, e.BytesRecorded); };
             var index = 0;
-            await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 128, binaryTxt, cts.Source.Token))
+            await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 64, binaryTxt, cts.Source.Token))
             {
                 await mac.WriteAsync(new ReadOnlySequence<byte>(packet).IDEncode<byte>(index++), cts.Source.Token);
                 // await Task.Delay(200);
