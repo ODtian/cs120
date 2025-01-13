@@ -47,6 +47,8 @@ public class CarrierQuietSensor<TSample>(float threshold = 0.05f) : ISequnceSear
     private readonly TSample threshold = TSample.CreateChecked(threshold);
     public bool TrySearch(ref ReadOnlySequence<TSample> buffer)
     {
+        if (buffer.IsEmpty)
+            return false;
         // ReadOnlySequence<TSample> samples = buffer;
         // if (samples.Length > 400)
         // {
@@ -84,16 +86,15 @@ public class CarrierQuietSensor<TSample>(float threshold = 0.05f) : ISequnceSear
         // return false;
 
         // buffer = buffer.Slice(start + 400);
-        SequencePosition pos = buffer.Start;
+        var pos = buffer.Start;
         while (buffer.TryGet(ref pos, out var next))
         {
             if (pos.Equals(default))
             {
-                for (var i = 0; i < next.Length; i++)
+                for (var i = next.Length - Math.Min(next.Length, 64); i < next.Length; i++)
                 {
                     if (TSample.Abs(next.Span[i]) > threshold)
                     {
-                        // buffer = buffer.Slice(i);
                         return true;
                     }
                 }

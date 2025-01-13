@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.IO.Pipelines;
 using System.Numerics;
 using System.Threading.Channels;
 using CommunityToolkit.HighPerformance;
@@ -547,6 +546,7 @@ public class CSMAPhy<TSample, TLength>
 
     private readonly AsyncExclusiveLock sendLock = new();
     private readonly AsyncTrigger quietTrigger = new();
+    private bool quiet = false;
 
     private readonly IInStream<TSample> samplesIn;
     private readonly IOutChannel<ReadOnlySequence<TSample>> samplesOut;
@@ -560,11 +560,11 @@ public class CSMAPhy<TSample, TLength>
     private readonly Channel<ReadOnlySequence<byte>> channelRx = Channel.CreateUnbounded<ReadOnlySequence<byte>>();
     private ChannelReader<ReadOnlySequence<byte>> RxReader => channelRx.Reader;
     private ChannelWriter<ReadOnlySequence<byte>> RxWriter => channelRx.Writer;
-    private bool quiet = false;
 
     // private bool quiting = false;
 
     private readonly Sequence<TSample> sequence = new();
+
     private readonly CancellationTokenSource cts = new();
     private readonly Task processTask;
 
@@ -627,12 +627,59 @@ public class CSMAPhy<TSample, TLength>
             //     }
             // }
             // if (data.Length > 16)
-            await quietTrigger.WaitAsync(linked.Token);
+            // while (true)
+            // {
+            //     var result = await samplesIn.ReadAsync(cts.Token);
+            //     // var originalLength = seq.Length;
+            //     var seq = result.Buffer;
+            //     Console.WriteLine(seq.Length);
+            //     // var x = seq.Slice(originalLength);
+            //     // Console.WriteLine(quiet);
+            //     // if (quiet && new Random().NextSingle() < 0.5)
+            //     if (!carrierSensor.TrySearch(ref seq))
+            //         break;
+            // }
 
             // var writer = new ArrayBufferWriter<TSample>();
             modulator.TryRead(ref data, sequence);
-            samples2.Add(sequence.AsReadOnlySequence.ToArray());
-
+            // samples2.Add(sequence.AsReadOnlySequence.ToArray());
+            // var seq = currentResult.Buffer;
+            // while (seq.Length < 64 || carrierSensor.TrySearch(ref seq))
+            // while (true)
+            // {
+            //     var quiet1 = true;
+            //     for (var i = 0; i < currentSamples.Length; i++)
+            //     {
+            //         if (TSample.Abs(currentSamples[i]) > TSample.CreateChecked(Program.carrierSenseThreshold))
+            //         {
+            //             // buffer = buffer.Slice(i);
+            //             // return true;
+            //             quiet1 = false;
+            //             break;
+            //             // await sampleUpdateTrigger.WaitAsync(linked.Token);
+            //             // continue;
+            //         }
+            //     }
+            //     if (quiet1)
+            //         break;
+            //     await sampleUpdateTrigger.WaitAsync(linked.Token);
+            // }
+            // do
+            // {
+            //     await sampleUpdateTrigger.WaitAsync(linked.Token);
+            //     seq = currentResult.Buffer;
+            // } while (carrierSensor.TrySearch(ref seq));
+            // while (true)
+            // {
+            //     var result = await samplesIn2.ReadAsync(linked.Token);
+            //     var seq = result.Buffer;
+            //     var quiet = !carrierSensor.TrySearch(ref seq);
+            //     samplesIn2.AdvanceTo(seq.End);
+            //     if (quiet)
+            //         break;
+            // }
+            // while (!quiet)
+            await quietTrigger.WaitAsync(linked.Token);
             await samplesOut.WriteAsync(sequence.AsReadOnlySequence, linked.Token);
             sequence.Reset();
 
@@ -682,21 +729,68 @@ public class CSMAPhy<TSample, TLength>
             RxWriter.TryComplete(exception);
         }
     }
-
     private async Task ProcessAsync()
     {
+        // var pos = new SequencePosition();
+        async ValueTask<ReadResult<TSample>> ReadAsync()
+        {
+            var result = await samplesIn.ReadAsync(cts.Token);
+            var seq = result.Buffer;
+
+            if (quiet = !carrierSensor.TrySearch(ref seq))
+                quietTrigger.Signal();
+            return result;
+            // try
+            // {
+            //     do
+            //     {
+
+            //         currentResult = await samplesIn.ReadAsync(cts.Token);
+            //         var seq = currentResult.Buffer;
+            //         quiet = !carrierSensor.TrySearch(ref seq);
+            //         sampleUpdateTrigger.Signal();
+            //         // if (quiet)
+            //         //     quietTrigger.Signal();
+            //         // currentSamples.AsSpan().Clear();
+            //         // seq.Slice(seq.Length - Math.Min(currentSamples.Length, 64)).CopyTo(currentSamples);
+
+            //         // var oldSample = currentSamples;
+
+            //         // samplesIn.
+            //         // if (!currentSamples.IsEmpty)
+            //         // samplesIn.AdvanceTo(oldSample.End);
+            //     } while (!currentResult.IsCompleted);
+            // }
+            // catch (Exception e)
+            // {
+            //     Console.WriteLine(currentResult.Buffer.IsEmpty);
+            //     Console.WriteLine(currentResult.Buffer.IsSingleSegment);
+            //     Console.WriteLine(e);
+            // }
+        }
+        // while (true)
+        // {
+        //     var result = await ReadAsync();
+        //     var seq = result.Buffer;
+        //     samplesIn.AdvanceTo(seq.Start);
+        //     if (result.IsCompleted)
+        //         return;
+        // }
         // var buf = new TSample[480];
         // buf.AsSpan().Fill(TSample.One * TSample.CreateChecked(1));
         while (true)
         {
-
-            var result = await samplesIn.ReadAsync(cts.Token);
-            // var originalLength = seq.Length;
+            // await sampleUpdateTrigger.WaitAsync(cts.Token);
+            // var seq = currentResult.Buffer;
+            var result = await ReadAsync();
+            // // var originalLength = seq.Length;
             var seq = result.Buffer;
-            // var x = seq.Slice(originalLength);
-            // Console.WriteLine(quiet);
-            // if (quiet && new Random().NextSingle() < 0.5)
-            if (!carrierSensor.TrySearch(ref seq))
+            // // Console.WriteLine(seq.Length);
+            // // var x = seq.Slice(originalLength);
+            // // Console.WriteLine(quiet);
+            // // if (quiet && new Random().NextSingle() < 0.5)
+            quiet = !carrierSensor.TrySearch(ref seq);
+            if (quiet)
                 quietTrigger.Signal();
             // if (carrierSensor.TrySearch(ref seq) == quiet)
             // {
@@ -717,14 +811,19 @@ public class CSMAPhy<TSample, TLength>
                 {
                     if (result.IsCompleted)
                         return;
-                    result = await samplesIn.ReadAsync(cts.Token);
+
+                    // await sampleUpdateTrigger.WaitAsync(cts.Token);
+                    result = await ReadAsync();
                     // originalLength = seq.Length;
-                    // seq = result.Buffer;
+                    seq = result.Buffer;
                     // x = seq.Slice(originalLength);
                     // quiet = !carrierSensor.TrySearch(ref x);
                     // if (quiet)
                     //     quietTrigger.Signal();
-                    seq = result.Buffer;
+                    // seq = currentResult.Buffer;
+
+                    // if (!carrierSensor.TrySearch(ref seq))
+                    //     quietTrigger.Signal();
                     samples[count] = seq.ToArray();
                 }
                 // Console.WriteLine(DateTime.Now - ts);
@@ -757,9 +856,7 @@ public class CSMAPhy<TSample, TLength>
                 }
             }
             else if (result.IsCompleted)
-            {
                 return;
-            }
 
             // if (carrierSensor.TrySearch(ref seq))
             // {

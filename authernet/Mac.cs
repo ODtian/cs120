@@ -165,6 +165,9 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     // }
     private readonly Task receiveTask;
     private readonly CancellationTokenSource cts = new();
+    private double rttEstimate = 5;
+    private static double rttAlpha = 0.125;
+
     private int LastAckReceived { get; set; }
     private int LastDataReceived { get; set; }
     private int NextDataNumber => ToSequnceNumber(LastDataReceived + 1);
@@ -177,7 +180,6 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     // private Random random;
 
     // private float factor;
-    public bool IsCompleted => RxReader.IsFinished();
     public MacD(
         IInChannel<ReadOnlySequence<byte>> inChannel,
         IOutChannel<ReadOnlySequence<byte>> outChannel,
@@ -229,6 +231,8 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                 ) { Source = from, Dest = to, SequenceNumber = (byte)slot, AckNumber = (byte)LastDataReceived }),
                 ct
             );
+
+            var rttStart = DateTime.Now;
             // await outChannel.WriteAsync(
             //     data.MacEncode(new(
             //     ) { Source = from, Dest = to, Type = MacFrame.FrameType.Data, SequenceNumber = (byte)slot }),
@@ -236,9 +240,9 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             // );
             try
             {
-                await task.WaitAsync(TimeSpan.FromMilliseconds(100) * (random.NextSingle() * 0.5f + 0.5f), ct);
+                await task.WaitAsync(TimeSpan.FromMilliseconds(rttEstimate) * (random.NextSingle() * 0.5f + 0.5f), ct);
                 // await Task.Delay(20);
-
+                rttEstimate = rttEstimate * (1 - rttAlpha) + (DateTime.Now - rttStart).TotalMilliseconds * rttAlpha;
                 return;
             }
             catch (TimeoutException)

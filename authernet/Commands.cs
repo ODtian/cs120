@@ -525,6 +525,7 @@ public static class CommandTask
         var playbackFormat = WaveFormat.CreateIeeeFloatWaveFormat(wasapiOut.OutputWaveFormat.SampleRate, 1);
 #endif
         await using var audioIn = new AudioMonoInStream<float>(recordFormat, 0);
+        // await using var audioIn2 = new AudioMonoInStream<float>(recordFormat, 0);
         await using var audioOut = new AudioOutChannel(playbackFormat);
         // await using var audioIn = new AudioMonoInStream<float>(wasapiIn.WaveFormat, 0);
         // await using var audioOut =
@@ -533,6 +534,7 @@ public static class CommandTask
 #if ASIO
         asio.InitRecordAndPlayback(audioOut.SampleProvider.ToWaveProvider(), 1, 48000);
         asio.AudioAvailable += audioIn.DataAvailable;
+        // asio.AudioAvailable += audioIn2.DataAvailable;
         var audioTask = Audio.PlayAsync(asio, cts.Source.Token);
         var buf = new float[2048];
         asio.AudioAvailable += (s, e) =>
@@ -559,7 +561,7 @@ public static class CommandTask
         var modSym = new TriSymbol<float>(Program.triOption);
         var demodSym = new LineSymbol<float>(Program.lineOption);
         var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(preamble, modSym);
-        var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 1600);
+        var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 78);
 
         await using var phyDuplex = new CSMAPhy<float, ushort>(
             audioIn,
@@ -577,7 +579,7 @@ public static class CommandTask
         // await Task.Delay(5000);
         using var inputReader = new StreamReader(Console.OpenStandardInput(), Console.InputEncoding);
         await inputReader.ReadLineAsync();
-        var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 256);
+        var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 512);
         await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
         // await Task.Delay(500);
 
@@ -585,7 +587,7 @@ public static class CommandTask
         {
             // { wave.Write(e.Buffer, 0, e.BytesRecorded); };
             var index = 0;
-            await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 128, binaryTxt, cts.Source.Token))
+            await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 64, binaryTxt, cts.Source.Token))
             {
                 await mac.WriteAsync(new ReadOnlySequence<byte>(packet).IDEncode<byte>(index++), cts.Source.Token);
                 // await Task.Delay(200);
@@ -726,7 +728,8 @@ public static class CommandTask
                 // session.WaitForRead(TimeSpan.FromMilliseconds(20));
             }
             // x:
-            //     await tx.Writer.WriteAsync(new(Enumerable.Repeat<byte>(0x00, 64).ToArray()), cts.Source.Token);
+            //     await tx.Writer.WriteAsync(new(Enumerable.Repeat<byte>(0x00, 64).ToArray()),
+            // cts.Source.Token);
         }
 
         async Task TunRxAsync()
@@ -780,7 +783,8 @@ public static class CommandTask
 
         var preamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = recordFormat.SampleRate });
         // var preamble =
-        //     new ChirpPreamble<float>(Program.chirpOption with { SampleRate = wasapiIn.WaveFormat.SampleRate });
+        //     new ChirpPreamble<float>(Program.chirpOption with { SampleRate =
+        // wasapiIn.WaveFormat.SampleRate });
         var modSym = new TriSymbol<float>(Program.triOption);
         var demodSym = new LineSymbol<float>(Program.lineOption);
         var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(preamble, modSym);

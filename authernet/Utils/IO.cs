@@ -241,6 +241,7 @@ public class AudioMonoInStream<TSample> : IInStream<TSample>, IAsyncDisposable
         // // {
         // //     Console.Write(z[i]);
         // // }
+        // Console.WriteLine(args.SamplesPerBuffer);
         Writer.Write(new Span<byte>((byte *)args.InputBuffers[channel], length));
         Writer.FlushAsync().AsTask().ConfigureAwait(false).GetAwaiter().GetResult();
     }
@@ -284,7 +285,7 @@ public class AudioMonoInStream<TSample> : IInStream<TSample>, IAsyncDisposable
         if (!result.IsFinished())
         {
             var length = sampleReader.Length;
-
+            // Console.WriteLine(length);
             // Console.WriteLine($"l1 {seq.Length} {seq.AsReadOnlySequence.Start.}");
             var readed = sampleReader.Read(seq.GetSpan(length)[..length]);
             samples.AddRange(readed);
