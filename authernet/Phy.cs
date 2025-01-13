@@ -678,8 +678,8 @@ public class CSMAPhy<TSample, TLength>
             //     if (quiet)
             //         break;
             // }
-            // while (!quiet)
-            await quietTrigger.WaitAsync(linked.Token);
+            while (!quiet)
+                await quietTrigger.WaitAsync(linked.Token);
             await samplesOut.WriteAsync(sequence.AsReadOnlySequence, linked.Token);
             sequence.Reset();
 
