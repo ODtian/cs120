@@ -529,17 +529,17 @@ public static class CommandTask
         // await using var audioIn = new AudioMonoInStream<float>(wasapiIn.WaveFormat, 0);
         // await using var audioOut =
         //     new AudioOutChannel(WaveFormat.CreateIeeeFloatWaveFormat(wasapiOut.OutputWaveFormat.SampleRate, 1));
-        // using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", playbackFormat);
+        using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", playbackFormat);
 #if ASIO
         asio.InitRecordAndPlayback(audioOut.SampleProvider.ToWaveProvider(), 1, 48000);
         asio.AudioAvailable += audioIn.DataAvailable;
         var audioTask = Audio.PlayAsync(asio, cts.Source.Token);
-        // var buf = new float[2048];
-        // asio.AudioAvailable += (s, e) =>
-        // {
-        //     var size = e.GetAsInterleavedSamples(buf);
-        //     wave.Write(buf.AsSpan(0, size).AsBytes());
-        // };
+        var buf = new float[2048];
+        asio.AudioAvailable += (s, e) =>
+        {
+            var size = e.GetAsInterleavedSamples(buf);
+            wave.Write(buf.AsSpan(0, size).AsBytes());
+        };
 #else
         wasapiIn.DataAvailable += audioIn.DataAvailable;
         wasapiOut.Init(audioOut.SampleProvider.ToWaveProvider());

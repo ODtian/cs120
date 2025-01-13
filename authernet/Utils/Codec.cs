@@ -187,11 +187,11 @@ public static class CodecRS
 
 public static class CodecScrambler
 {
-    static readonly Random random = new();
+    static readonly Random random = new(0);
     static byte[] randomSequence = new byte[256];
     static CodecScrambler()
     {
-        new Random(0).NextBytes(randomSequence);
+        random.NextBytes(randomSequence);
     }
     static void Resize(int sizeHint)
     {
