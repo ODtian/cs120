@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Numerics;
 using STH1123.ReedSolomon;
 
 namespace CS120.Utils.Codec;
@@ -45,6 +46,8 @@ public static class Codec4B5B
     {
         // List<byte> encodedData = [];
         var resultLengthInBits = data.Length * 2 * 5;
+        // var result = new BigInteger();
+        // var result = new BigInteger(resultLengthInBits);
         var result = new BitArray(resultLengthInBits);
 
         // var encodedData = new BitArray(new bool[data.Length * 2]);
@@ -57,19 +60,24 @@ public static class Codec4B5B
             var low = EncodeTable[lowNibble];
             var high = EncodeTable[highNibble];
 
-            result[i * 5 * 2] = (low & 0b1) != 0;
-            result[i * 5 * 2 + 1] = (low & 0b10) != 0;
-            result[i * 5 * 2 + 2] = (low & 0b100) != 0;
-            result[i * 5 * 2 + 3] = (low & 0b1000) != 0;
-            result[i * 5 * 2 + 4] = (low & 0b10000) != 0;
+            for (int j = 0; j < 5; j++)
+            {
+                result[i * 5 * 2 + j] = (low & (1 << j)) != 0;
+                result[i * 5 * 2 + j + 5] = (high & (1 << j)) != 0;
+            }
+            // result[i * 5 * 2] = (low & 0b1) != 0;
+            // result[i * 5 * 2 + 1] = (low & 0b10) != 0;
+            // result[i * 5 * 2 + 2] = (low & 0b100) != 0;
+            // result[i * 5 * 2 + 3] = (low & 0b1000) != 0;
+            // result[i * 5 * 2 + 4] = (low & 0b10000) != 0;
 
-            result[i * 5 * 2 + 5] = (high & 0b1) != 0;
-            result[i * 5 * 2 + 6] = (high & 0b10) != 0;
-            result[i * 5 * 2 + 7] = (high & 0b100) != 0;
-            result[i * 5 * 2 + 8] = (high & 0b1000) != 0;
-            result[i * 5 * 2 + 9] = (high & 0b10000) != 0;
+            // result[i * 5 * 2 + 5] = (high & 0b1) != 0;
+            // result[i * 5 * 2 + 6] = (high & 0b10) != 0;
+            // result[i * 5 * 2 + 7] = (high & 0b100) != 0;
+            // result[i * 5 * 2 + 8] = (high & 0b1000) != 0;
+            // result[i * 5 * 2 + 9] = (high & 0b10000) != 0;
         }
-        var resultByte = new byte[(int)Math.Ceiling((float)resultLengthInBits / 8)];
+        var resultByte = new byte[(int)Math.Ceiling(resultLengthInBits / 8f)];
         result.CopyTo(resultByte, 0);
         return resultByte;
     }
@@ -86,17 +94,25 @@ public static class Codec4B5B
         {
             byte high = 0b0;
             byte low = 0b0;
-            low |= (byte)(dataBit[i * 5 * 2] ? 0b1 : 0b0);
-            low |= (byte)(dataBit[i * 5 * 2 + 1] ? 0b10 : 0b0);
-            low |= (byte)(dataBit[i * 5 * 2 + 2] ? 0b100 : 0b0);
-            low |= (byte)(dataBit[i * 5 * 2 + 3] ? 0b1000 : 0b0);
-            low |= (byte)(dataBit[i * 5 * 2 + 4] ? 0b10000 : 0b0);
 
-            high |= (byte)(dataBit[i * 5 * 2 + 4] ? 0b1 : 0b0);
-            high |= (byte)(dataBit[i * 5 * 2 + 5] ? 0b10 : 0b0);
-            high |= (byte)(dataBit[i * 5 * 2 + 6] ? 0b100 : 0b0);
-            high |= (byte)(dataBit[i * 5 * 2 + 7] ? 0b1000 : 0b0);
-            high |= (byte)(dataBit[i * 5 * 2 + 7] ? 0b10000 : 0b0);
+            for (int j = 0; j < 5; j++)
+            {
+                if (dataBit[i * 5 * 2 + j])
+                    low |= (byte)(1 << j);
+                if (dataBit[i * 5 * 2 + j + 5])
+                    high |= (byte)(1 << j);
+            }
+            // low |= (byte)(dataBit[i * 5 * 2] ? 0b1 : 0b0);
+            // low |= (byte)(dataBit[i * 5 * 2 + 1] ? 0b10 : 0b0);
+            // low |= (byte)(dataBit[i * 5 * 2 + 2] ? 0b100 : 0b0);
+            // low |= (byte)(dataBit[i * 5 * 2 + 3] ? 0b1000 : 0b0);
+            // low |= (byte)(dataBit[i * 5 * 2 + 4] ? 0b10000 : 0b0);
+
+            // high |= (byte)(dataBit[i * 5 * 2 + 4] ? 0b1 : 0b0);
+            // high |= (byte)(dataBit[i * 5 * 2 + 5] ? 0b10 : 0b0);
+            // high |= (byte)(dataBit[i * 5 * 2 + 6] ? 0b100 : 0b0);
+            // high |= (byte)(dataBit[i * 5 * 2 + 7] ? 0b1000 : 0b0);
+            // high |= (byte)(dataBit[i * 5 * 2 + 7] ? 0b10000 : 0b0);
 
             result[i] = (byte)(DecodeTable[high] << 4 + DecodeTable[low]);
         }
