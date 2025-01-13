@@ -56,10 +56,8 @@ public static class Codec4B5B
         {
             var highNibble = (byte)(data[i] >> 4);
             var lowNibble = (byte)(data[i] & 0b1111);
-
             var low = EncodeTable[lowNibble];
             var high = EncodeTable[highNibble];
-
             for (int j = 0; j < 5; j++)
             {
                 result[i * 5 * 2 + j] = (low & (1 << j)) != 0;
@@ -84,10 +82,10 @@ public static class Codec4B5B
 
     public static byte[] Decode(byte[] data)
     {
-        if (data.Length % 2 != 0)
-        {
-            throw new ArgumentException("Encoded data length must be even.");
-        }
+        // if (data.Length % 2 != 0)
+        // {
+        //     throw new ArgumentException("Encoded data length must be even.");
+        // }
         var dataBit = new BitArray(data);
         var result = new byte[(int)(data.Length * 0.8)];
         for (int i = 0; i < result.Length; i++)
@@ -114,7 +112,7 @@ public static class Codec4B5B
             // high |= (byte)(dataBit[i * 5 * 2 + 7] ? 0b1000 : 0b0);
             // high |= (byte)(dataBit[i * 5 * 2 + 7] ? 0b10000 : 0b0);
 
-            result[i] = (byte)(DecodeTable[high] << 4 + DecodeTable[low]);
+            result[i] = (byte)((DecodeTable[high] << 4) | DecodeTable[low]);
         }
         // dataBit.
         // List<byte> decodedData = [];
@@ -184,5 +182,31 @@ public static class CodecRS
             data[i] = (byte)toDecode[i];
         }
         return data;
+    }
+}
+
+public static class CodecScrambler
+{
+    static readonly Random random = new();
+    static byte[] randomSequence = new byte[256];
+    static CodecScrambler()
+    {
+        new Random(0).NextBytes(randomSequence);
+    }
+    static void Resize(int sizeHint)
+    {
+        if (sizeHint > randomSequence.Length)
+        {
+            var oldSize = randomSequence.Length;
+            Array.Resize(ref randomSequence, sizeHint);
+            random.NextBytes(randomSequence.AsSpan(oldSize));
+        }
+    }
+    public static void Scramble(Span<byte> buffer)
+    {
+        Resize(buffer.Length);
+
+        for (int i = 0; i < buffer.Length; i++)
+            buffer[i] ^= randomSequence[i];
     }
 }

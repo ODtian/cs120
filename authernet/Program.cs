@@ -87,7 +87,14 @@ class Program
         // Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager.CreateFromConnectionProfile(profile);
 
         // x.
-        // var x = new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 };
+        // var x = new ReadOnlySequence<byte>(
+        //     [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08]
+        // );
+        // Console.WriteLine(Convert.ToHexString(x.ToArray()));
+        // var y = x.ScramblerEncode();
+        // Console.WriteLine(Convert.ToHexString(y.ToArray()));
+        // y = y.ScramblerDecode();
+        // Console.WriteLine(Convert.ToHexString(y.ToArray()));
 
         // var b = new ReadOnlySequence<byte>(x).RSEncode(3).LengthEncode<byte>();
         // Console.WriteLine("//// Receive");

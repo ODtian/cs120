@@ -193,7 +193,7 @@ public readonly struct TriSymbol<T> : ISymbol<T>
         // NumSamplesPerSymbol = symbolOption.NumSamplesPerSymbol;
         // var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
 
-        // var interval = T.CreateChecked(1f / (symbolOption.NumSamplesPerSymbol));
+        // var interval = T.CreateChecked(1f / (symbolOption.NumSamplesPerSymbol - 1));
 
         // var zero = new T[symbolOption.NumSamplesPerSymbol];
         // for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)

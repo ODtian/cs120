@@ -601,7 +601,7 @@ public class CSMAPhy<TSample, TLength>
     public async ValueTask WriteAsync(ReadOnlySequence<byte> data, CancellationToken ct)
     {
         // data = data.RSEncode(Program.eccNums)
-        data = data.C4B5BEncode().CrcEncode().LengthEncode<TLength>();
+        data = data.ScramblerEncode().CrcEncode().LengthEncode<TLength>();
         Console.WriteLine("//// Send");
         Console.WriteLine(Convert.ToHexString(data.ToArray()));
         Console.WriteLine("////");
@@ -740,13 +740,14 @@ public class CSMAPhy<TSample, TLength>
                     data = data.CrcDecode(out eccValid);
 
                 if (eccValid)
-                    data = data.C4B5BDecode();
+                    data = data.ScramblerDecode();
                 // .RSDecode(Program.eccNums, out var eccValid);
                 data.MacGet(out var mac);
                 Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
                 Console.WriteLine(
                     $"Receive mac {mac.Source} to {mac.Dest} of Seq {mac.SequenceNumber} Ack {mac.AckNumber}"
                 );
+                Console.WriteLine(Convert.ToHexString(data.ToArray()));
                 Console.WriteLine("////");
                 Console.WriteLine();
 

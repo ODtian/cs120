@@ -212,6 +212,15 @@ public static class PacketExtension
         return new(Codec4B5B.Decode(packet.ToArray()));
     }
 
+    public static ReadOnlySequence<byte> ScramblerEncode(this ReadOnlySequence<byte> packet)
+    {
+        var result = packet.ToArray();
+        CodecScrambler.Scramble(result);
+        return new(result);
+    }
+
+    public static ReadOnlySequence<byte> ScramblerDecode(this ReadOnlySequence<byte> packet) => ScramblerEncode(packet);
+
     public static ReadOnlySequence<byte> LengthEncode<T>(this ReadOnlySequence<byte> packet, int? padding = null)
         where T : IBinaryInteger<T>
     {
@@ -336,100 +345,100 @@ public static class PacketExtension
     }
 }
 
-public static class BytePacketExtension
-{
-    public static byte[] RSEncode(this byte[] packet, int eccNums)
-    {
-        return CodecRS.Encode(packet, eccNums);
-    }
+// public static class BytePacketExtension
+// {
+//     public static byte[] RSEncode(this byte[] packet, int eccNums)
+//     {
+//         return CodecRS.Encode(packet, eccNums);
+//     }
 
-    public static byte[] RSDecode(this byte[] packet, int eccNums, out bool valid)
-    {
-        return CodecRS.Decode(packet, eccNums, out valid);
-    }
+//     public static byte[] RSDecode(this byte[] packet, int eccNums, out bool valid)
+//     {
+//         return CodecRS.Decode(packet, eccNums, out valid);
+//     }
 
-    public static byte[] C4B5BEncode(this byte[] packet)
-    {
-        return Codec4B5B.Encode(packet);
-    }
+//     public static byte[] C4B5BEncode(this byte[] packet)
+//     {
+//         return Codec4B5B.Encode(packet);
+//     }
 
-    public static byte[] C4B5BDecode(this byte[] packet)
-    {
-        return Codec4B5B.Decode(packet);
-    }
+//     public static byte[] C4B5BDecode(this byte[] packet)
+//     {
+//         return Codec4B5B.Decode(packet);
+//     }
 
-    public static byte[] LengthEncode<T>(this byte[] packet, int? padding = null)
-        where T : IBinaryInteger<T>
-    {
-        var length = T.CreateChecked(packet.Length + BinaryIntegerTrait<T>.Size);
-        var result = new byte[BinaryIntegerTrait<T>.Size + (padding ?? packet.Length)];
-        length.WriteLittleEndian(result.AsSpan(0, BinaryIntegerTrait<T>.Size));
-        packet.CopyTo(result.AsSpan(BinaryIntegerTrait<T>.Size));
+//     public static byte[] LengthEncode<T>(this byte[] packet, int? padding = null)
+//         where T : IBinaryInteger<T>
+//     {
+//         var length = T.CreateChecked(packet.Length + BinaryIntegerTrait<T>.Size);
+//         var result = new byte[BinaryIntegerTrait<T>.Size + (padding ?? packet.Length)];
+//         length.WriteLittleEndian(result.AsSpan(0, BinaryIntegerTrait<T>.Size));
+//         packet.CopyTo(result.AsSpan(BinaryIntegerTrait<T>.Size));
 
-        return result;
-    }
+//         return result;
+//     }
 
-    public static byte[] LengthDecode<T>(this byte[] packet, out bool valid)
-        where T : IBinaryInteger<T>
-    {
-        packet.LengthGet<T>(out valid, out var length);
-        // length = Math.Min(length, packet.Length - BinaryIntegerSizeTrait<T>.Size);
-        byte[]? result = packet[BinaryIntegerTrait<T>.Size..Math.Min(length, packet.Length)];
-        // Console.WriteLine($"LengthDecode: {length} {result.Length} 11111111111");
-        return result;
-    }
+//     public static byte[] LengthDecode<T>(this byte[] packet, out bool valid)
+//         where T : IBinaryInteger<T>
+//     {
+//         packet.LengthGet<T>(out valid, out var length);
+//         // length = Math.Min(length, packet.Length - BinaryIntegerSizeTrait<T>.Size);
+//         byte[]? result = packet[BinaryIntegerTrait<T>.Size..Math.Min(length, packet.Length)];
+//         // Console.WriteLine($"LengthDecode: {length} {result.Length} 11111111111");
+//         return result;
+//     }
 
-    public static byte[] LengthGet<T>(this byte[] packet, out bool valid, out int length)
-        where T : IBinaryInteger<T>
-    {
-        length = int.CreateChecked(T.ReadLittleEndian(packet.AsSpan(0, BinaryIntegerTrait<T>.Size), true));
-        valid = length <= packet.Length;
-        return packet;
-    }
+//     public static byte[] LengthGet<T>(this byte[] packet, out bool valid, out int length)
+//         where T : IBinaryInteger<T>
+//     {
+//         length = int.CreateChecked(T.ReadLittleEndian(packet.AsSpan(0, BinaryIntegerTrait<T>.Size), true));
+//         valid = length <= packet.Length;
+//         return packet;
+//     }
 
-    public static byte[] IDEncode<T>(this byte[] packet, int id)
-        where T : IBinaryInteger<T>
-    {
-        var result = new byte[BinaryIntegerTrait<T>.Size + packet.Length];
-        T.CreateChecked(id).WriteLittleEndian(result.AsSpan(0, BinaryIntegerTrait<T>.Size));
-        // Console.WriteLine($"abc {id} {result[0]}");
+//     public static byte[] IDEncode<T>(this byte[] packet, int id)
+//         where T : IBinaryInteger<T>
+//     {
+//         var result = new byte[BinaryIntegerTrait<T>.Size + packet.Length];
+//         T.CreateChecked(id).WriteLittleEndian(result.AsSpan(0, BinaryIntegerTrait<T>.Size));
+//         // Console.WriteLine($"abc {id} {result[0]}");
 
-        packet.CopyTo(result.AsSpan(BinaryIntegerTrait<T>.Size));
-        return result;
-    }
+//         packet.CopyTo(result.AsSpan(BinaryIntegerTrait<T>.Size));
+//         return result;
+//     }
 
-    public static byte[] IDDecode<T>(this byte[] packet, out int id)
-        where T : IBinaryInteger<T>
-    {
-        packet.IDGet<T>(out id);
-        return packet.AsSpan(BinaryIntegerTrait<T>.Size).ToArray();
-    }
+//     public static byte[] IDDecode<T>(this byte[] packet, out int id)
+//         where T : IBinaryInteger<T>
+//     {
+//         packet.IDGet<T>(out id);
+//         return packet.AsSpan(BinaryIntegerTrait<T>.Size).ToArray();
+//     }
 
-    public static byte[] IDGet<T>(this byte[] packet, out int id)
-        where T : IBinaryInteger<T>
-    {
-        id = int.CreateChecked(T.ReadLittleEndian(packet.AsSpan(0, BinaryIntegerTrait<T>.Size), true));
-        return packet;
-    }
+//     public static byte[] IDGet<T>(this byte[] packet, out int id)
+//         where T : IBinaryInteger<T>
+//     {
+//         id = int.CreateChecked(T.ReadLittleEndian(packet.AsSpan(0, BinaryIntegerTrait<T>.Size), true));
+//         return packet;
+//     }
 
-    public static byte[] MacEncode(this byte[] packet, in MacFrame mac)
-    {
-        var macSpan = mac.AsBytes();
-        var result = new byte[packet.Length + macSpan.Length];
-        macSpan.CopyTo(result);
-        packet.CopyTo(result.AsSpan(macSpan.Length));
-        return result;
-    }
+//     public static byte[] MacEncode(this byte[] packet, in MacFrame mac)
+//     {
+//         var macSpan = mac.AsBytes();
+//         var result = new byte[packet.Length + macSpan.Length];
+//         macSpan.CopyTo(result);
+//         packet.CopyTo(result.AsSpan(macSpan.Length));
+//         return result;
+//     }
 
-    public static byte[] MacDecode(this byte[] packet, out MacFrame mac)
-    {
-        packet.MacGet(out mac);
-        return packet[Unsafe.SizeOf<MacFrame>()..];
-    }
+//     public static byte[] MacDecode(this byte[] packet, out MacFrame mac)
+//     {
+//         packet.MacGet(out mac);
+//         return packet[Unsafe.SizeOf<MacFrame>()..];
+//     }
 
-    public static byte[] MacGet(this byte[] packet, out MacFrame mac)
-    {
-        mac = MemoryMarshal.Read<MacFrame>(packet);
-        return packet;
-    }
-}
+//     public static byte[] MacGet(this byte[] packet, out MacFrame mac)
+//     {
+//         mac = MemoryMarshal.Read<MacFrame>(packet);
+//         return packet;
+//     }
+// }
