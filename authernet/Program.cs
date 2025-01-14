@@ -30,8 +30,17 @@ class Program
     // Instrumental.mp3"; static readonly string defaultRecordFileName = "assets/recorded.wav";
 
     public static DPSKSymbolOption option =
-        new() { NumSymbols = 2, NumRedundant = 1, SampleRate = 48000, Freq = 6_000 };
+        new() { NumSymbols = 2, NumRedundant = 1, SampleRate = 48000, Freq = 4_000 };
+    public static DPSKSymbolOption option2 =
+        new() { NumSymbols = 2, NumRedundant = 2, SampleRate = 48000, Freq = 8_000 };
 
+    public static ChirpSymbolOption chirpOptionAir = new() {
+        NumSymbols = 2,
+        Duration = 0.005f, // Read config or something
+        SampleRate = 48_000,
+        FreqA = 3_000, // Read config or something
+        FreqB = 10_000 // Read config or something
+    };
     public static ChirpSymbolOption chirpOption = new() {
         NumSymbols = 2,
         Duration = 0.001f, // Read config or something
@@ -50,7 +59,7 @@ class Program
         NumSamplesPerSymbol = 2,
     };
 
-    public static float corrThreshold = 0.3f;
+    public static float corrThreshold = 0.1f;
     public static float carrierSenseThreshold = 0.25f;
     public static int maxPeakFalling = chirpOption.NumSamplesPerSymbol;
     // public static int maxPeakFalling = 8;

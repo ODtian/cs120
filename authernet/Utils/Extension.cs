@@ -64,7 +64,7 @@ public static class ReaderExtension
         return reader.Completion.IsCompleted && !reader.TryPeek(out _);
     }
 
-    public static async ValueTask<T> ReadAsync<T>(this ChannelReader<T> reader, CancellationToken ct = default)
+    public static async ValueTask<T> TryReadAsync<T>(this ChannelReader<T> reader, CancellationToken ct = default)
         where T : struct
     {
         if (await reader.WaitToReadAsync(ct))

@@ -212,7 +212,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         LastAckReceived = LastDataReceived = this.sequenceSize - 1;
     }
 
-    public async ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct) => await RxReader.ReadAsync(ct);
+    public ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct) => RxReader.TryReadAsync(ct);
 
     public async ValueTask WriteAsync(ReadOnlySequence<byte> data, CancellationToken ct)
     {

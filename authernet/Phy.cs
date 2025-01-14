@@ -389,7 +389,7 @@ public class RXPhy<TSample, TLength> : IInChannel<ReadOnlySequence<byte>>, IAsyn
     private ChannelReader<ReadOnlySequence<byte>> RxReader => channelRx.Reader;
     private ChannelWriter<ReadOnlySequence<byte>> RxWriter => channelRx.Writer;
     private readonly List<TSample[]> samples = [];
-    public bool IsCompleted => RxReader.IsFinished();
+    // public bool IsCompleted => RxReader.IsFinished();
     public RXPhy(
         IInStream<TSample> inStream,
         ISequnceReader<TSample, byte> demodulator,
@@ -488,7 +488,7 @@ public class RXPhy<TSample, TLength> : IInChannel<ReadOnlySequence<byte>>, IAsyn
             samplesIn.AdvanceTo(seq.Start);
         }
     }
-    public async ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct) => await RxReader.ReadAsync(ct);
+    public ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct) => RxReader.TryReadAsync(ct);
 }
 
 public class TXPhy<TSample, TLength>(
@@ -596,7 +596,7 @@ public class CSMAPhy<TSample, TLength>
         processTask = Task.Run(RunProcessAsync);
         // this.seed = seed;
     }
-    public async ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct) => await RxReader.ReadAsync(ct);
+    public ValueTask<ReadOnlySequence<byte>> ReadAsync(CancellationToken ct) => RxReader.TryReadAsync(ct);
 
     public async ValueTask WriteAsync(ReadOnlySequence<byte> data, CancellationToken ct)
     {

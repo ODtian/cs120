@@ -5,6 +5,7 @@ using CS120.Utils.Extension;
 using NAudio.Wave;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using AuroraLib.Core;
 
 namespace CS120.Utils.Wave.Reader;
 public interface IWaveReader<T>
@@ -220,7 +221,8 @@ public static class WaveReaderExtension
             {
                 8 => new PCMWaveToSampleReader<sbyte, T>(reader, newWaveFormat),
                 16 => new PCMWaveToSampleReader<short, T>(reader, newWaveFormat),
-                24 => new PCM24WaveToSampleReader<T>(reader, newWaveFormat),
+                24 => new PCMWaveToSampleReader<Int24, T>(reader, newWaveFormat),
+                // 24 => new PCM24WaveToSampleReader<T>(reader, newWaveFormat),
                 32 => new PCMWaveToSampleReader<int, T>(reader, newWaveFormat),
                 _ => throw new NotSupportedException()
             },

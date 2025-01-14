@@ -340,14 +340,15 @@ public static class CommandTask
 
         var waveFormat = WaveFormat.CreateIeeeFloatWaveFormat(wasapiOut.OutputWaveFormat.SampleRate, 1);
 
-        IDisposableOutChannel<ReadOnlySequence<float>> GetOutChannel(out Task play)
+        IAsyncDisposable GetOutChannel(out Task play, out IOutChannel<ReadOnlySequence<float>> outChannel)
         {
             if (toWav is null)
             {
                 var audioOut = new AudioOutChannel(waveFormat);
                 wasapiOut.Init(audioOut.SampleProvider.ToWaveProvider());
                 play = Audio.PlayAsync(wasapiOut, cts.Source.Token);
-                return (IDisposableOutChannel<ReadOnlySequence<float>>)audioOut;
+                outChannel = audioOut;
+                return audioOut;
             }
             else
             {
@@ -359,21 +360,28 @@ public static class CommandTask
                     await stream.CopyToAsync(writer);
                 }
                 play = CopyToAudioAsync();
-                return (IDisposableOutChannel<ReadOnlySequence<float>>)audioOut;
+                outChannel = audioOut;
+                return audioOut;
             }
         }
 
-        await using var outChannel = GetOutChannel(out var play);
+        // await using var outChannel = new AudioOutChannel(waveFormat);
+        // wasapiOut.Init(outChannel.SampleProvider.ToWaveProvider());
+        // var play = Audio.PlayAsync(wasapiOut, cts.Source.Token);
+        await using var _ = GetOutChannel(out var play, out var outChannel);
 
-        // var symbols = new DPSKSymbol<float>(Program.option with { SampleRate = waveFormat.SampleRate });
-        var symbols = new LineSymbol<float>(Program.lineOption);
-        // var modulator = new Modulator<ChirpPreamble<float>, DPSKSymbol<float>>(
+        var symbols = new DPSKSymbol<float>(Program.option with { SampleRate = waveFormat.SampleRate });
+
+        var symbols2 = new DPSKSymbol<float>(Program.option2 with { SampleRate = waveFormat.SampleRate });
+        // var symbols = new LineSymbol<float>(Program.lineOption);
+        var modulator = new OFDMModulator<ChirpPreamble<float>, DPSKSymbol<float>>(
+            new ChirpPreamble<float>(symbols: Program.chirpOptionAir with { SampleRate = waveFormat.SampleRate }),
+            [symbols, symbols2]
+        );
+        // var modulator = new Modulator<ChirpPreamble<float>, LineSymbol<float>>(
         //     new ChirpPreamble<float>(symbols: Program.chirpOption with { SampleRate = waveFormat.SampleRate }),
         //     symbols
         // );
-        var modulator = new Modulator<ChirpPreamble<float>, LineSymbol<float>>(
-            new ChirpPreamble<float>(symbols: Program.chirpOption with { SampleRate = waveFormat.SampleRate }), symbols
-        );
         await using var tx = new TXPhy<float, byte>(outChannel, modulator);
 
         var index = 0;
@@ -389,7 +397,7 @@ public static class CommandTask
             await Task.Delay(200);
         }
 
-        await play;
+        // await play;
     }
     interface IDisposableInStream<T> : IInStream<T>,
                                        IAsyncDisposable
@@ -399,7 +407,7 @@ public static class CommandTask
     {
         using var cts = new CancelKeyPressCancellationTokenSource(new());
 
-#if ASIO
+#if ASIO && false
         using var asio = new AsioOut();
 #else
         // using var wasapiIn = new WasapiLoopbackCapture();
@@ -407,25 +415,26 @@ public static class CommandTask
         using var wasapiIn = new WasapiCapture(recorder, true, 10);
 #endif
 
-        IDisposableInStream<float> GetInChannel(out Task rec, out WaveFormat waveFormat)
+        IAsyncDisposable GetInChannel(out Task rec, out WaveFormat waveFormat, out IInStream<float> inStream)
         {
             if (fromWav is null)
             {
-#if ASIO
+#if ASIO && false
                 waveFormat = new WaveFormat(48000, 32, 1);
                 asio.InitRecordAndPlayback(null, capture, 48000);
 #else
                 waveFormat = wasapiIn.WaveFormat;
 #endif
                 var audio = new AudioMonoInStream<float>(waveFormat, 0);
-#if ASIO
+                inStream = audio;
+#if ASIO && false
                 asio.AudioAvailable += audio.DataAvailable;
                 rec = Audio.PlayAsync(asio, cts.Source.Token);
 #else
                 wasapiIn.DataAvailable += audio.DataAvailable;
                 rec = Audio.RecordAsync(wasapiIn, cts.Source.Token);
 #endif
-                return (IDisposableInStream<float>)audio;
+                return audio;
             }
             else
             {
@@ -448,19 +457,25 @@ public static class CommandTask
                 var reader = new WaveFileReader(fromWav.FullName);
                 waveFormat = reader.WaveFormat;
                 var audio = new AudioPipeInStream<float>(waveFormat);
+                inStream = audio;
                 rec = CopyToAudioAsync(reader, audio.Writer);
-                return (IDisposableInStream<float>)audio;
+                return audio;
             }
         }
 
-        await using var audioIn = GetInChannel(out var rec, out var waveFormat);
+        // var waveFormat = wasapiIn.WaveFormat;
+        // await using var audioIn = new AudioMonoInStream<float>(waveFormat, 0);
 
-        var preamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = waveFormat.SampleRate });
+        // wasapiIn.DataAvailable += audioIn.DataAvailable;
+        // var rec = Audio.RecordAsync(wasapiIn, cts.Source.Token);
 
-        var demodulator = new Demodulator<LineSymbol<float>, float, byte>(Program.lineOption, byte.MaxValue);
-        // var demodulator = new Demodulator<LineSymbol<float>, float, byte>(
-        //     Program.lineOption with { SampleRate = waveFormat.SampleRate }, 255
-        // );
+        await using var _ = GetInChannel(out var rec, out var waveFormat, out var audioIn);
+
+        var preamble = new ChirpPreamble<float>(Program.chirpOptionAir with { SampleRate = waveFormat.SampleRate });
+
+        var demodulator =
+            new OFDMDemodulator<DPSKSymbol<float>, float>([Program.option, Program.option2], 136);
+        // var demodulator = new Demodulator<LineSymbol<float>, float, byte>(Program.lineOption, byte.MaxValue);
 
         // var warmup = new WarmupPreamble<DPSKSymbol<float>, float>(symbols, 2000);
 
