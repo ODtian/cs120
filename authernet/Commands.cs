@@ -473,8 +473,7 @@ public static class CommandTask
 
         var preamble = new ChirpPreamble<float>(Program.chirpOptionAir with { SampleRate = waveFormat.SampleRate });
 
-        var demodulator =
-            new OFDMDemodulator<DPSKSymbol<float>, float>([Program.option, Program.option2], 136);
+        var demodulator = new OFDMDemodulator<DPSKSymbol<float>, float>([Program.option, Program.option2], 136);
         // var demodulator = new Demodulator<LineSymbol<float>, float, byte>(Program.lineOption, byte.MaxValue);
 
         // var warmup = new WarmupPreamble<DPSKSymbol<float>, float>(symbols, 2000);
@@ -607,7 +606,6 @@ public static class CommandTask
         if (send is not null)
         {
             // { wave.Write(e.Buffer, 0, e.BytesRecorded); };
-            var index = 0;
             await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 64, binaryTxt, cts.Source.Token))
             {
                 await mac.WriteAsync(new ReadOnlySequence<byte>(packet), cts.Source.Token);
