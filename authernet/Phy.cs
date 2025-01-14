@@ -601,10 +601,11 @@ public class CSMAPhy<TSample, TLength>
     public async ValueTask WriteAsync(ReadOnlySequence<byte> data, CancellationToken ct)
     {
         // data = data.RSEncode(Program.eccNums)
+        data.MacGet(out var mac);
         data = data.ScramblerEncode().CrcEncode().LengthEncode<TLength>();
-        Console.WriteLine("//// Send");
+        // Console.WriteLine("//// Send");
         // Console.WriteLine(Convert.ToHexString(data.ToArray()));
-        Console.WriteLine("////");
+        // Console.WriteLine("////");
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
 
         using (await sendLock.AcquireLockAsync(linked.Token))
@@ -681,6 +682,7 @@ public class CSMAPhy<TSample, TLength>
             while (!quiet)
                 await quietTrigger.WaitAsync(linked.Token);
             await samplesOut.WriteAsync(sequence.AsReadOnlySequence, linked.Token);
+            // Console.WriteLine($"")
             sequence.Reset();
 
             // await Task.Delay(40, linked.Token);
@@ -829,82 +831,36 @@ public class CSMAPhy<TSample, TLength>
                 // Console.WriteLine(DateTime.Now - ts);
                 // await samplesOut.WriteAsync(new ReadOnlySequence<TSample>(buf), cts.Token);
                 var data = new ReadOnlySequence<byte>(writer.WrittenMemory);
-                Console.WriteLine("//// Receive");
-                Console.WriteLine(Convert.ToHexString(data.ToArray()));
-                // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-                data = data.LengthDecode<TLength>(out var lengthValid);
-
-                var eccValid = false;
-                if (lengthValid)
-                    data = data.CrcDecode(out eccValid);
-
-                if (eccValid)
-                    data = data.ScramblerDecode();
-                // .RSDecode(Program.eccNums, out var eccValid);
-                data.MacGet(out var mac);
-                Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-                Console.WriteLine(
-                    $"Receive mac {mac.Source} to {mac.Dest} of Seq {mac.SequenceNumber} Ack {mac.AckNumber}"
-                );
+                // Console.WriteLine("//// Receive");
                 // Console.WriteLine(Convert.ToHexString(data.ToArray()));
-                Console.WriteLine("////");
-                Console.WriteLine();
+                // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+                data = data.LengthDecode<TLength>(out var valid);
+                if (valid)
+                    data = data.CrcDecode(out valid);
 
-                if (lengthValid && eccValid)
-                {
-                    RxWriter.TryWrite(data);
-                    // await RxWriter.WriteAsync(data);
-                }
+                if (valid)
+                    RxWriter.TryWrite(data.ScramblerDecode());
+                else
+                    Console.WriteLine("Invalid packet received");
+
+                // .RSDecode(Program.eccNums, out var eccValid);
+                // data.MacGet(out var mac);
+                // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
+                // Console.WriteLine(
+                //     $"Receive mac {mac.Source} to {mac.Dest} of Seq {mac.SequenceNumber} Ack {mac.AckNumber}"
+                // );
+                // // Console.WriteLine(Convert.ToHexString(data.ToArray()));
+                // Console.WriteLine("////");
+                // Console.WriteLine();
+
+                // if (lengthValid && eccValid)
+                // {
+
+                //     // await RxWriter.WriteAsync(data);
+                // }
             }
             else if (result.IsCompleted)
                 return;
-
-            // if (carrierSensor.TrySearch(ref seq))
-            // {
-            //     quiet = false;
-            //     if (preambleDetection.TrySearch(ref seq))
-            //     {
-            //         samplesIn.AdvanceTo(seq.Start);
-            //         var writer = new ArrayBufferWriter<byte>();
-            //         while (!demodulator.TryRead(ref seq, writer))
-            //         {
-            //             if (result.IsCompleted)
-            //                 return;
-            //             result = await samplesIn.ReadAsync(cts.Token);
-            //             seq = result.Buffer;
-            //         }
-
-            //         var data = new ReadOnlySequence<byte>(writer.WrittenMemory)
-            //                        .LengthDecode<byte>(out var lengthValid)
-            //                        .RSDecode(Program.eccNums, out var eccValid);
-            //         // Console.WriteLine("//// Receive");
-            //         // foreach (var d in data.GetElements())
-            //         // {
-            //         //     Console.Write($"{d:X2} ");
-            //         // }
-            //         // Console.WriteLine();
-            //         // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-            //         // Console.WriteLine("////");
-            //         // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
-
-            //         if (lengthValid && eccValid)
-            //         {
-            //             await RxWriter.WriteAsync(data);
-            //             data.MacGet(out var mac);
-            //             Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type}
-            //             {mac.SequenceNumber}");
-            //         }
-            //     }
-            //     else if (samplesIn.IsCompleted)
-            //         return;
-            // }
-            // else if (result.IsCompleted)
-            //     return;
-            // else
-            // {
-            //     quiet = true;
-            //     quietTrigger.Signal();
-            // }
 
             samplesIn.AdvanceTo(seq.Start);
         }

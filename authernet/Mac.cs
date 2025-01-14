@@ -165,8 +165,8 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     // }
     private readonly Task receiveTask;
     private readonly CancellationTokenSource cts = new();
-    private double rttEstimate = 200;
-    private static double rttAlpha = 0.125;
+    private double rttEstimate = 50;
+    private static readonly double rttAlpha = 0.125;
 
     private int LastAckReceived { get; set; }
     private int LastDataReceived { get; set; }
@@ -222,15 +222,17 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
         var task = ackSource.WaitAsync(slot, ct).AsTask();
         // var tries = random.NextSingle() * 0.5f + 0.5f;
         // var retry = 0;
+        // var slot = -1;
         var random = new Random();
+        var mac = new MacFrame(
+        ) { Source = from, Dest = to, SequenceNumber = (byte)slot, AckNumber = (byte)LastDataReceived };
+
+        data = data.MacEncode(mac);
+
         while (true)
         {
             Console.WriteLine($"Send {slot}");
-            await outChannel.WriteAsync(
-                data.MacEncode(new(
-                ) { Source = from, Dest = to, SequenceNumber = (byte)slot, AckNumber = (byte)LastDataReceived }),
-                ct
-            );
+            await outChannel.WriteAsync(data, ct);
 
             var rttStart = DateTime.Now;
             // await outChannel.WriteAsync(
@@ -243,11 +245,14 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                 await task.WaitAsync(TimeSpan.FromMilliseconds(rttEstimate) * (random.NextSingle() * 0.5f + 0.5f), ct);
                 // await Task.Delay(20);
                 rttEstimate = rttEstimate * (1 - rttAlpha) + (DateTime.Now - rttStart).TotalMilliseconds * rttAlpha;
+                Console.WriteLine($"Send mac {mac.Source} to {mac.Dest} of Seq {mac.SequenceNumber} Ack {mac.AckNumber}"
+                );
+
                 return;
             }
             catch (TimeoutException)
             {
-                rttEstimate += 10;
+                // rttEstimate += 10;
             }
         }
         // await channelRxRaw.Writer.WriteAsync(
@@ -299,6 +304,10 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             if (packet.IsEmpty)
                 break;
             var payload = packet.MacDecode(out var header);
+
+            Console.WriteLine(
+                $"Receive mac {header.Source} to {header.Dest} of Seq {header.SequenceNumber} Ack {header.AckNumber}"
+            );
             if (header.Dest == from)
             {
                 if (ValueInWindowRange(NextAckNumber, header.AckNumber))
@@ -324,7 +333,8 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
                     {
                         while (!receivedDataCache[NextDataNumber].IsEmpty)
                         {
-                            await RxWriter.WriteAsync(receivedDataCache[NextDataNumber]);
+                            Console.WriteLine($"Write {NextDataNumber} to queue");
+                            RxWriter.TryWrite(receivedDataCache[NextDataNumber]);
                             receivedDataCache[NextDataNumber] = ReadOnlySequence<byte>.Empty;
                             LastDataReceived = NextDataNumber;
                         }
