@@ -603,7 +603,7 @@ public class CSMAPhy<TSample, TLength>
         // data = data.RSEncode(Program.eccNums)
         data = data.ScramblerEncode().CrcEncode().LengthEncode<TLength>();
         Console.WriteLine("//// Send");
-        Console.WriteLine(Convert.ToHexString(data.ToArray()));
+        // Console.WriteLine(Convert.ToHexString(data.ToArray()));
         Console.WriteLine("////");
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
 
@@ -846,7 +846,7 @@ public class CSMAPhy<TSample, TLength>
                 Console.WriteLine(
                     $"Receive mac {mac.Source} to {mac.Dest} of Seq {mac.SequenceNumber} Ack {mac.AckNumber}"
                 );
-                Console.WriteLine(Convert.ToHexString(data.ToArray()));
+                // Console.WriteLine(Convert.ToHexString(data.ToArray()));
                 Console.WriteLine("////");
                 Console.WriteLine();
 

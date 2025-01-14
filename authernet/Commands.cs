@@ -593,6 +593,7 @@ public static class CommandTask
                 // await Task.Delay(200);
             }
         }
+        using var stream = receive switch { null => Console.OpenStandardOutput(), FileInfo f => f.OpenWrite() };
         // await foreach(var x in mac.)
         while (true)
         {
@@ -600,7 +601,12 @@ public static class CommandTask
             var packet = await mac.ReadAsync(cts.Source.Token);
             if (packet.IsEmpty)
                 break;
-            Console.WriteLine(Convert.ToHexString(packet.ToArray()));
+
+            if (binaryTxt)
+                foreach (var b in packet.GetElements())
+                    await stream.WriteAsync(Encoding.UTF8.GetBytes(Convert.ToString(b, 2).PadLeft(8, '0')));
+            else
+                await stream.WriteAsync(packet.ToArray());
         }
         Console.WriteLine("Done");
         await audioTask;
