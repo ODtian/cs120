@@ -165,7 +165,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
     // }
     private readonly Task receiveTask;
     private readonly CancellationTokenSource cts = new();
-    private double rttEstimate = 50;
+    private double rttEstimate = 200;
     private static double rttAlpha = 0.125;
 
     private int LastAckReceived { get; set; }
