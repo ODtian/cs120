@@ -819,14 +819,16 @@ public static class CommandTask
         var audioTask =
             Task.WhenAll(Audio.RecordAsync(wasapiIn, cts.Source.Token), Audio.PlayAsync(wasapiOut, cts.Source.Token));
 #endif
-
-        var preamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = recordFormat.SampleRate });
+        var modPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = 48000, Amp = 0.2f });
+        var demodPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = 48000 });
         // var preamble =
-        //     new ChirpPreamble<float>(Program.chirpOption with { SampleRate =
-        // wasapiIn.WaveFormat.SampleRate });
-        var modSym = new TriSymbol<float>(Program.triOption);
+        //     new ChirpPreamble<float>(Program.chirpOption with { SampleRate = wasapiIn.WaveFormat.SampleRate });
+
+        // var modSym = new DPSKSymbol<float>(Program.option);
+        // var demodSym = new DPSKSymbol<float>(Program.option);
+        var modSym = new TriSymbol<float>(Program.triOption with { Amp = 0.2f });
         var demodSym = new LineSymbol<float>(Program.lineOption);
-        var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(preamble, modSym);
+        var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(modPreamble, modSym);
         var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 1600);
 
         await using var phyDuplex = new CSMAPhy<float, ushort>(
@@ -835,17 +837,43 @@ public static class CommandTask
             demodulator,
             modulator,
             new PreambleDetection<float>(
-                preamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
+                demodPreamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
             ),
             new CarrierQuietSensor<float>(Program.carrierSenseThreshold)
         );
 
         await using var mac = new MacD(phyDuplex, phyDuplex, addressSource, addressDest, 1, 32);
 
-        var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 2000);
+        // await Task.Delay(5000);
+        var warmup = new WarmupPreamble<LineSymbol<float>, float>(demodSym, 512);
         await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
-        await Task.Delay(500);
-        Console.WriteLine("Start");
+        Console.WriteLine("Ready");
+        var preamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = recordFormat.SampleRate });
+        // var preamble =
+        //     new ChirpPreamble<float>(Program.chirpOption with { SampleRate =
+        // wasapiIn.WaveFormat.SampleRate });
+        // var modSym = new TriSymbol<float>(Program.triOption with { Amp = 0.2f });
+        // var demodSym = new LineSymbol<float>(Program.lineOption);
+        // var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(preamble, modSym);
+        // var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 1600);
+
+        // await using var phyDuplex = new CSMAPhy<float, ushort>(
+        //     audioIn,
+        //     audioOut,
+        //     demodulator,
+        //     modulator,
+        //     new PreambleDetection<float>(
+        //         preamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
+        //     ),
+        //     new CarrierQuietSensor<float>(Program.carrierSenseThreshold)
+        // );
+
+        // await using var mac = new MacD(phyDuplex, phyDuplex, addressSource, addressDest, 1, 32);
+
+        // var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 2000);
+        // await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
+        // await Task.Delay(500);
+        // Console.WriteLine("Start");
         async Task MacTxAsync()
         {
             await foreach (var packet in tx.Reader.ReadAllAsync(cts.Source.Token))
