@@ -252,7 +252,7 @@ public class MacD : IIOChannel<ReadOnlySequence<byte>>, IAsyncDisposable
             }
             catch (TimeoutException)
             {
-                rttEstimate += 10;
+                // rttEstimate += 10;
             }
         }
         // await channelRxRaw.Writer.WriteAsync(

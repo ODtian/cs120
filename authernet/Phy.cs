@@ -462,15 +462,14 @@ public class RXPhy<TSample, TLength> : IInChannel<ReadOnlySequence<byte>>, IAsyn
                     samples[count] = seq.ToArray();
                 }
 
-                var data = new ReadOnlySequence<byte>(writer.WrittenMemory)
-                               .LengthDecode<TLength>(out var lengthValid)
-                               .RSDecode(Program.eccNums, out var eccValid);
-
                 Console.WriteLine("//// Receive");
+                var data = new ReadOnlySequence<byte>(writer.WrittenMemory);
+
                 foreach (var d in data.GetElements())
                 {
                     Console.Write($"{d:X2} ");
                 }
+                data = data.LengthDecode<TLength>(out var lengthValid).RSDecode(Program.eccNums, out var eccValid);
                 Console.WriteLine();
                 Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
                 Console.WriteLine("////");
@@ -832,7 +831,7 @@ public class CSMAPhy<TSample, TLength>
                 // await samplesOut.WriteAsync(new ReadOnlySequence<TSample>(buf), cts.Token);
                 var data = new ReadOnlySequence<byte>(writer.WrittenMemory);
                 // Console.WriteLine("//// Receive");
-                // Console.WriteLine(Convert.ToHexString(data.ToArray()));
+                Console.WriteLine(Convert.ToHexString(data.ToArray()));
                 // Console.WriteLine($"lengthValid {lengthValid} eccValid {eccValid}");
                 data = data.LengthDecode<TLength>(out var valid);
                 if (valid)

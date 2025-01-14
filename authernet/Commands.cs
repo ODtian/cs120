@@ -374,6 +374,10 @@ public static class CommandTask
 
         var symbols2 = new DPSKSymbol<float>(Program.option2 with { SampleRate = waveFormat.SampleRate });
         // var symbols = new LineSymbol<float>(Program.lineOption);
+        // var modulator = new Modulator<ChirpPreamble<float>, DPSKSymbol<float>>(
+        //     new ChirpPreamble<float>(symbols: Program.chirpOptionAir with { SampleRate = waveFormat.SampleRate }),
+        //     symbols
+        // );
         var modulator = new OFDMModulator<ChirpPreamble<float>, DPSKSymbol<float>>(
             new ChirpPreamble<float>(symbols: Program.chirpOptionAir with { SampleRate = waveFormat.SampleRate }),
             [symbols, symbols2]
@@ -473,7 +477,16 @@ public static class CommandTask
 
         var preamble = new ChirpPreamble<float>(Program.chirpOptionAir with { SampleRate = waveFormat.SampleRate });
 
-        var demodulator = new OFDMDemodulator<DPSKSymbol<float>, float>([Program.option, Program.option2], 136);
+        // var demodulator =
+        //     new Demodulator<DPSKSymbol<float>, float>(Program.option with { SampleRate = waveFormat.SampleRate },
+        //     136);
+        var demodulator = new OFDMDemodulator<DPSKSymbol<float>, float>(
+            [
+                Program.option with { SampleRate = waveFormat.SampleRate },
+                Program.option2 with { SampleRate = waveFormat.SampleRate }
+            ],
+            136
+        );
         // var demodulator = new Demodulator<LineSymbol<float>, float, byte>(Program.lineOption, byte.MaxValue);
 
         // var warmup = new WarmupPreamble<DPSKSymbol<float>, float>(symbols, 2000);
@@ -485,7 +498,7 @@ public static class CommandTask
             audioIn,
             demodulator,
             new PreambleDetection<float>(
-                preamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
+                preamble, Program.corrThresholdAir, Program.smoothedEnergyFactor, Program.maxPeakFallingAir
             )
         );
 
@@ -570,15 +583,16 @@ public static class CommandTask
 #endif
         // // using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", wasapiIn.WaveFormat);
 
-        var preamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = 48000 });
+        var modPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = 48000, Amp = 0.2f });
+        var demodPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = 48000 });
         // var preamble =
         //     new ChirpPreamble<float>(Program.chirpOption with { SampleRate = wasapiIn.WaveFormat.SampleRate });
 
         // var modSym = new DPSKSymbol<float>(Program.option);
         // var demodSym = new DPSKSymbol<float>(Program.option);
-        var modSym = new TriSymbol<float>(Program.triOption);
+        var modSym = new TriSymbol<float>(Program.triOption with { Amp = 0.2f });
         var demodSym = new LineSymbol<float>(Program.lineOption);
-        var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(preamble, modSym);
+        var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(modPreamble, modSym);
         var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 78);
 
         await using var phyDuplex = new CSMAPhy<float, ushort>(
@@ -587,7 +601,7 @@ public static class CommandTask
             demodulator,
             modulator,
             new PreambleDetection<float>(
-                preamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
+                demodPreamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
             ),
             new CarrierQuietSensor<float>(Program.carrierSenseThreshold)
         );
@@ -595,7 +609,7 @@ public static class CommandTask
         await using var mac = new MacD(phyDuplex, phyDuplex, addressSource, addressDest, 1, 32);
 
         // await Task.Delay(5000);
-        var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 512);
+        var warmup = new WarmupPreamble<LineSymbol<float>, float>(demodSym, 512);
         await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
         Console.WriteLine("Ready");
         using var inputReader = new StreamReader(Console.OpenStandardInput(), Console.InputEncoding);

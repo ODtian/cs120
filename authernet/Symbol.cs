@@ -24,7 +24,7 @@ public interface ISymbol<T>
 }
 
 public readonly record struct ChirpSymbolOption
-(int NumSymbols, float Duration, int SampleRate, float FreqA, float FreqB)
+(int NumSymbols, float Duration, int SampleRate, float FreqA, float FreqB, float Amp = 1.0f)
 {
     public int NumSamplesPerSymbol => (int)(Duration * SampleRate);
 }
@@ -41,8 +41,8 @@ public readonly struct ChirpSymbol<T> : ISymbol<T>
         var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
         var builder = new ChirpBuilder();
 
-        var sig = builder.SetParameter("low", -1f)
-                      .SetParameter("high", 1f)
+        var sig = builder.SetParameter("low", -symbolOption.Amp)
+                      .SetParameter("high", symbolOption.Amp)
                       .SetParameter("f0", symbolOption.FreqA)
                       .SetParameter("f1", symbolOption.FreqB)
                       .SampledAt(symbolOption.SampleRate)
@@ -79,7 +79,8 @@ public readonly struct ChirpSymbol2<T> : ISymbol<T>
             buf[i] += buf[i - 1];
 
         for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)
-            buf[i] = Math.Sin(buf[i] * 2.0 * Math.PI);
+            buf[i] = symbolOption.Amp * Math.Sin(buf[i] * 2.0 * Math.PI);
+
         var zero = new T[symbolOption.NumSamplesPerSymbol];
 
         for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)
@@ -100,7 +101,7 @@ public readonly struct ChirpSymbol2<T> : ISymbol<T>
 }
 
 public readonly record struct DPSKSymbolOption
-(int NumSymbols, int NumRedundant, int SampleRate, float Freq)
+(int NumSymbols, int NumRedundant, int SampleRate, float Freq, float Amp = 1.0f)
 {
     public int NumSamplesPerSymbol => (int)(SampleRate / Freq * NumRedundant);
 }
@@ -118,8 +119,8 @@ public readonly struct DPSKSymbol<T> : ISymbol<T>
 
         // for (int i = 0; i < symbolOption.NumSymbols; i++)
         var sig = new SineBuilder()
-                      .SetParameter("low", -1f)
-                      .SetParameter("high", 1f)
+                      .SetParameter("low", -symbolOption.Amp)
+                      .SetParameter("high", symbolOption.Amp)
                       .SetParameter("freq", symbolOption.Freq)
                       .SampledAt(symbolOption.SampleRate)
                       .OfLength(symbolOption.NumSamplesPerSymbol)
@@ -136,7 +137,7 @@ public readonly struct DPSKSymbol<T> : ISymbol<T>
 }
 
 public readonly record struct LineSymbolOption
-(int NumSymbols, int NumSamplesPerSymbol)
+(int NumSymbols, int NumSamplesPerSymbol, float Amp = 1.0f)
 {
 }
 
@@ -152,11 +153,11 @@ public readonly struct LineSymbol<T> : ISymbol<T>
         var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
 
         var zero = new T[symbolOption.NumSamplesPerSymbol];
-        zero.AsSpan().Fill(T.CreateChecked(-1));
+        zero.AsSpan().Fill(T.CreateChecked(-symbolOption.Amp));
         result[0] = zero;
 
         var one = new T[symbolOption.NumSamplesPerSymbol];
-        one.AsSpan().Fill(T.CreateChecked(1));
+        one.AsSpan().Fill(T.CreateChecked(symbolOption.Amp));
         result[1] = one;
 
         Samples = result;
@@ -166,7 +167,7 @@ public readonly struct LineSymbol<T> : ISymbol<T>
 }
 
 public readonly record struct TriSymbolOption
-(int NumSymbols, int NumSamplesPerSymbol)
+(int NumSymbols, int NumSamplesPerSymbol, float Amp = 1.0f)
 {
 }
 
@@ -182,11 +183,11 @@ public readonly struct TriSymbol<T> : ISymbol<T>
         var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
 
         var zero = new T[symbolOption.NumSamplesPerSymbol];
-        zero.AsSpan().Fill(T.CreateChecked(-1));
+        zero.AsSpan().Fill(T.CreateChecked(-symbolOption.Amp));
         result[0] = zero;
 
         var one = new T[symbolOption.NumSamplesPerSymbol];
-        one.AsSpan().Fill(T.CreateChecked(1));
+        one.AsSpan().Fill(T.CreateChecked(symbolOption.Amp));
         result[1] = one;
 
         Samples = result;

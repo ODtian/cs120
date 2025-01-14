@@ -30,37 +30,43 @@ class Program
     // Instrumental.mp3"; static readonly string defaultRecordFileName = "assets/recorded.wav";
 
     public static DPSKSymbolOption option =
-        new() { NumSymbols = 2, NumRedundant = 1, SampleRate = 48000, Freq = 4_000 };
+        new() { NumSymbols = 2, NumRedundant = 1, SampleRate = 48000, Freq = 4_000, Amp = 1.0f };
     public static DPSKSymbolOption option2 =
-        new() { NumSymbols = 2, NumRedundant = 2, SampleRate = 48000, Freq = 8_000 };
+        new() { NumSymbols = 2, NumRedundant = 2, SampleRate = 48000, Freq = 8_000, Amp = 1.0f };
 
     public static ChirpSymbolOption chirpOptionAir = new() {
         NumSymbols = 2,
         Duration = 0.005f, // Read config or something
         SampleRate = 48_000,
-        FreqA = 3_000, // Read config or something
-        FreqB = 10_000 // Read config or something
+        FreqA = 3_000,  // Read config or something
+        FreqB = 10_000, // Read config or something
+        Amp = 1.0f,
     };
     public static ChirpSymbolOption chirpOption = new() {
         NumSymbols = 2,
         Duration = 0.001f, // Read config or something
         SampleRate = 48_000,
-        FreqA = 2_000, // Read config or something
-        FreqB = 16_000 // Read config or something
+        FreqA = 2_000,  // Read config or something
+        FreqB = 16_000, // Read config or something
+        Amp = 1.0f,
     };
 
     public static LineSymbolOption lineOption = new() {
         NumSymbols = 2,
         NumSamplesPerSymbol = 2,
+        Amp = 1.0f,
     };
 
     public static TriSymbolOption triOption = new() {
         NumSymbols = 2,
         NumSamplesPerSymbol = 2,
+        Amp = 1.0f,
     };
 
+    public static float corrThresholdAir = 0.015f;
     public static float corrThreshold = 0.3f;
     public static float carrierSenseThreshold = 0.25f;
+    public static int maxPeakFallingAir = chirpOptionAir.NumSamplesPerSymbol;
     public static int maxPeakFalling = chirpOption.NumSamplesPerSymbol;
     // public static int maxPeakFalling = 8;
     public static float smoothedEnergyFactor = 1f / 64f;
