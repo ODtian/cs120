@@ -545,17 +545,21 @@ public static class CommandTask
         // await using var audioIn = new AudioMonoInStream<float>(wasapiIn.WaveFormat, 0);
         // await using var audioOut =
         //     new AudioOutChannel(WaveFormat.CreateIeeeFloatWaveFormat(wasapiOut.OutputWaveFormat.SampleRate, 1));
-        using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", playbackFormat);
+        using var wave = Path.Exists($"../matlab/debug{addressSource}.wav")
+                             ? new WaveFileWriter($"../matlab/debug{addressSource}.wav", playbackFormat)
+                             : null;
+
 #if ASIO
         asio.InitRecordAndPlayback(audioOut.SampleProvider.ToWaveProvider(), 1, 48000);
         asio.AudioAvailable += audioIn.DataAvailable;
         // asio.AudioAvailable += audioIn2.DataAvailable;
         var audioTask = Audio.PlayAsync(asio, cts.Source.Token);
+
         var buf = new float[2048];
         asio.AudioAvailable += (s, e) =>
         {
             var size = e.GetAsInterleavedSamples(buf);
-            wave.Write(buf.AsSpan(0, size).AsBytes());
+            wave?.Write(buf.AsSpan(0, size).AsBytes());
         };
 #else
         wasapiIn.DataAvailable += audioIn.DataAvailable;
@@ -592,10 +596,12 @@ public static class CommandTask
         await using var mac = new MacD(phyDuplex, phyDuplex, addressSource, addressDest, 1, 32);
 
         // await Task.Delay(5000);
-        using var inputReader = new StreamReader(Console.OpenStandardInput(), Console.InputEncoding);
         var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 512);
         await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
+        Console.WriteLine("Ready");
+        using var inputReader = new StreamReader(Console.OpenStandardInput(), Console.InputEncoding);
         await inputReader.ReadLineAsync();
+
         // await Task.Delay(500);
 
         if (send is not null)
@@ -604,7 +610,7 @@ public static class CommandTask
             var index = 0;
             await foreach (var packet in FileHelper.ReadFileChunkAsync(send, 64, binaryTxt, cts.Source.Token))
             {
-                await mac.WriteAsync(new ReadOnlySequence<byte>(packet).IDEncode<byte>(index++), cts.Source.Token);
+                await mac.WriteAsync(new ReadOnlySequence<byte>(packet), cts.Source.Token);
                 // await Task.Delay(200);
             }
         }
