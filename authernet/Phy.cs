@@ -477,7 +477,7 @@ public class RXPhy<TSample, TLength> : IInChannel<ReadOnlySequence<byte>>, IAsyn
 
                 if (lengthValid && eccValid)
                 {
-                    await RxWriter.WriteAsync(data);
+                    RxWriter.TryWrite(data);
                 }
                 // data.MacGet(out var mac);
                 // Console.WriteLine($"Receive mac {mac.Source} to {mac.Dest} of {mac.Type} {mac.SequenceNumber}");
@@ -852,7 +852,8 @@ public class CSMAPhy<TSample, TLength>
 
                 if (lengthValid && eccValid)
                 {
-                    await RxWriter.WriteAsync(data);
+                    RxWriter.TryWrite(data);
+                    // await RxWriter.WriteAsync(data);
                 }
             }
             else if (result.IsCompleted)

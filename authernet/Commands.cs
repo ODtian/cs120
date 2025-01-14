@@ -578,9 +578,9 @@ public static class CommandTask
 
         // await Task.Delay(5000);
         using var inputReader = new StreamReader(Console.OpenStandardInput(), Console.InputEncoding);
-        await inputReader.ReadLineAsync();
         var warmup = new WarmupPreamble<TriSymbol<float>, float>(modSym, 512);
         await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
+        await inputReader.ReadLineAsync();
         // await Task.Delay(500);
 
         if (send is not null)
