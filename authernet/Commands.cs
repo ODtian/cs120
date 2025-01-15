@@ -584,14 +584,14 @@ public static class CommandTask
 #endif
         // // using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", wasapiIn.WaveFormat);
 
-        var modPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = sampleRate, Amp = 0.2f });
+        var modPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = sampleRate, Amp = 0.3f });
         var demodPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = sampleRate });
         // var preamble =
         //     new ChirpPreamble<float>(Program.chirpOption with { SampleRate = wasapiIn.WaveFormat.SampleRate });
 
         // var modSym = new DPSKSymbol<float>(Program.option);
         // var demodSym = new DPSKSymbol<float>(Program.option);
-        var modSym = new TriSymbol<float>(Program.triOption with { Amp = 0.2f });
+        var modSym = new TriSymbol<float>(Program.triOption with { Amp = 0.3f });
         var demodSym = new LineSymbol<float>(Program.lineOption);
         var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(modPreamble, modSym);
         var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 78);
