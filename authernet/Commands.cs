@@ -584,14 +584,14 @@ public static class CommandTask
 #endif
         // // using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", wasapiIn.WaveFormat);
 
-        var modPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = sampleRate, Amp = 0.2f });
+        var modPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = sampleRate, Amp = 0.3f });
         var demodPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = sampleRate });
         // var preamble =
         //     new ChirpPreamble<float>(Program.chirpOption with { SampleRate = wasapiIn.WaveFormat.SampleRate });
 
         // var modSym = new DPSKSymbol<float>(Program.option);
         // var demodSym = new DPSKSymbol<float>(Program.option);
-        var modSym = new TriSymbol<float>(Program.triOption with { Amp = 0.2f });
+        var modSym = new TriSymbol<float>(Program.triOption with { Amp = 0.3f });
         var demodSym = new LineSymbol<float>(Program.lineOption);
         var modulator = new Modulator<ChirpPreamble<float>, TriSymbol<float>>(modPreamble, modSym);
         var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 78);
@@ -729,7 +729,7 @@ public static class CommandTask
 
                     bool isIcmp = ipPacket.Protocol is ProtocolType.Icmp;
                     bool isDns = ipPacket.Protocol is ProtocolType.Udp &&
-                                 ipPacket.PayloadPacket as UdpPacket is { DestinationPort : 53 } or { SourcePort : 53 };
+                                 ipPacket.PayloadPacket as UdpPacket is { DestinationPort: 53 } or { SourcePort: 53 };
                     if (isDns)
                     {
                         var message = DnsMessage.Parse(ipPacket.PayloadPacket.PayloadData);
@@ -1006,12 +1006,12 @@ public static class CommandBuilder
     {
         var command = new Command("send", "send data");
 
-        var fileArgument = new Argument < FileInfo ? > (name: "input",
+        var fileArgument = new Argument<FileInfo?>(name: "input",
                                                         description: "The file path to save",
                                                         parse: result => FileHelper.ParseSingleFileInfo(result));
 
         var toWavOption =
-            new Option < FileInfo ? > (name: "--to-wav",
+            new Option<FileInfo?>(name: "--to-wav",
                                        description: "Export audio data to wav file",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, false));
@@ -1037,12 +1037,12 @@ public static class CommandBuilder
         var command = new Command("receive", "receive data");
 
         var fileOption =
-            new Option < FileInfo ? > (name: "--file",
+            new Option<FileInfo?>(name: "--file",
                                        description: "The file path to save, otherwise stdout",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, false));
 
-        var fromWavOption = new Option < FileInfo ? > (name: "--from-wav",
+        var fromWavOption = new Option<FileInfo?>(name: "--from-wav",
                                                        description: "Import audio data from wav file",
                                                        isDefault: true,
                                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result));
@@ -1075,13 +1075,13 @@ public static class CommandBuilder
             new Argument<byte>(name: "dest", description: "The mac address to send", getDefaultValue: () => 1);
 
         var fileSendOption =
-            new Option < FileInfo ? > (name: "--file-send",
+            new Option<FileInfo?>(name: "--file-send",
                                        description: "The file path to send data",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, true));
 
         var fileReceiveOption =
-            new Option < FileInfo ? > (name: "--file-receive",
+            new Option<FileInfo?>(name: "--file-receive",
                                        description: "The file path to save received data, otherwise stdout",
                                        isDefault: true,
                                        parseArgument: result => FileHelper.ParseSingleFileInfo(result, false));
@@ -1187,8 +1187,8 @@ public static class CommandBuilder
         var guidIndexOption =
             new Option<int>(name: "--guid", description: "The guid index to use", getDefaultValue: () => 0);
 
-        var seqHijackOption = new Option < uint
-            ? > (name: "--seq-hijack", description: "Hijack sequence number", getDefaultValue: () => null);
+        var seqHijackOption = new Option<uint
+            ?>(name: "--seq-hijack", description: "Hijack sequence number", getDefaultValue: () => null);
 
         command.AddArgument(addressSourceArgument);
         command.AddArgument(addressDestArgument);
@@ -1215,8 +1215,8 @@ public static class CommandBuilder
     {
         var command = new Command("hotspot", "Run an adapter");
 
-        var profileOption = new Option < string
-            ? > (name: "--profile", description: "The profile name to start hotspot", getDefaultValue: () => null);
+        var profileOption = new Option<string
+            ?>(name: "--profile", description: "The profile name to start hotspot", getDefaultValue: () => null);
 
         command.AddOption(profileOption);
         command.SetHandler(CommandTask.HotSpotTaskAsync, profileOption);
