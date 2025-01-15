@@ -538,10 +538,12 @@ public static class CommandTask
         // Console.WriteLine(wasapiIn.WaveFormat.SampleRate);
         // Console.WriteLine(wasapiOut.OutputWaveFormat.SampleRate);
 
+        var sampleRate = 48000;
 #if ASIO
         using var asio = new AsioOut() { ChannelOffset = render, InputChannelOffset = capture };
-        var recordFormat = new WaveFormat(48000, 32, 1);
-        var playbackFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 1);
+        var recordFormat = new WaveFormat(sampleRate, 32, 1);
+        var playbackFormat = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 1);
+        Console.WriteLine(asio.IsSampleRateSupported(96000));
 #else
         // using var wasapiIn = new WasapiLoopbackCapture();
         using var player = Audio.GetWASAPIDevice(render, DataFlow.Render);
@@ -560,9 +562,8 @@ public static class CommandTask
         using var wave = Path.Exists($"../matlab/debug{addressSource}.wav")
                              ? new WaveFileWriter($"../matlab/debug{addressSource}.wav", playbackFormat)
                              : null;
-
 #if ASIO
-        asio.InitRecordAndPlayback(audioOut.SampleProvider.ToWaveProvider(), 1, 48000);
+        asio.InitRecordAndPlayback(audioOut.SampleProvider.ToWaveProvider(), 1, sampleRate);
         asio.AudioAvailable += audioIn.DataAvailable;
         // asio.AudioAvailable += audioIn2.DataAvailable;
         var audioTask = Audio.PlayAsync(asio, cts.Source.Token);
@@ -583,8 +584,8 @@ public static class CommandTask
 #endif
         // // using var wave = new WaveFileWriter($"../matlab/debug{addressSource}.wav", wasapiIn.WaveFormat);
 
-        var modPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = 48000, Amp = 0.2f });
-        var demodPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = 48000 });
+        var modPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = sampleRate, Amp = 0.2f });
+        var demodPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = sampleRate });
         // var preamble =
         //     new ChirpPreamble<float>(Program.chirpOption with { SampleRate = wasapiIn.WaveFormat.SampleRate });
 

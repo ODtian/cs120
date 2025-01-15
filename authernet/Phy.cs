@@ -603,7 +603,7 @@ public class CSMAPhy<TSample, TLength>
         data.MacGet(out var mac);
         data = data.ScramblerEncode().CrcEncode().LengthEncode<TLength>();
         // Console.WriteLine("//// Send");
-        // Console.WriteLine(Convert.ToHexString(data.ToArray()));
+        Console.WriteLine(Convert.ToHexString(data.ToArray()));
         // Console.WriteLine("////");
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, cts.Token);
 
