@@ -53,13 +53,13 @@ class Program
 
     public static LineSymbolOption lineOption = new() {
         NumSymbols = 2,
-        NumSamplesPerSymbol = 2,
+        NumSamplesPerSymbol = 3,
         Amp = 1.0f,
     };
 
     public static TriSymbolOption triOption = new() {
         NumSymbols = 2,
-        NumSamplesPerSymbol = 2,
+        NumSamplesPerSymbol = 3,
         Amp = 1.0f,
     };
 

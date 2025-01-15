@@ -538,7 +538,7 @@ public static class CommandTask
         // Console.WriteLine(wasapiIn.WaveFormat.SampleRate);
         // Console.WriteLine(wasapiOut.OutputWaveFormat.SampleRate);
 
-        var sampleRate = 48000;
+        var sampleRate = 96000;
 #if ASIO
         using var asio = new AsioOut() { ChannelOffset = render, InputChannelOffset = capture };
         var recordFormat = new WaveFormat(sampleRate, 32, 1);
