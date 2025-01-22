@@ -52,3 +52,4 @@ We implment an 3-layer acoustic link with C# (.NET 9) and ASIO or WASAPI, includ
   - `New-NetNat`: Setup a NAT in Windows.
   - `New-NetIPAddress`: Setup virtual interface IP address, it will also setup route table.
   - `Set-NetIpInterface -Forwarding`: Enable packet forwarding for the interface, open it to pass Star task. Also reminber disabling the NAT.
+- WSL provides mirrored interface, while Linux's `ping` and `curl` provide options to use certain interface. It is useful to debug your program without disconnecting other links.
