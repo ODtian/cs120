@@ -1,6 +1,6 @@
-# Aether.NET - A CS120: Computer Network Project in C#
+# Aether.NET - A ShanghaiTech CS120: Computer Network Project in C#
 
-We implment an 3-layer acoustic link with C# (.NET 9) and ASIO or WASAPI, including PHY, MAC and IP. C# is good at high level abstraction and low level control, and also flexibility (you will notice some `dynamic` vars in our code).
+We implment a 3-layer acoustic link with C# (.NET 9) and ASIO or WASAPI, including PHY, MAC and IP. C# is good at high level abstraction and low level control, and also flexibility (you will notice some `dynamic` vars in our code).
 
 ## Completion
 - Project 0. Warm Up [3/3]
