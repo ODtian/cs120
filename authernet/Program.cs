@@ -29,39 +29,34 @@ class Program
     // static readonly string defaultAudioFileName = "assets/初星学園,ギガP,花海咲季 - Fighting My Way -
     // Instrumental.mp3"; static readonly string defaultRecordFileName = "assets/recorded.wav";
 
-    public static DPSKSymbolOption option =
-        new() { NumSymbols = 2, NumRedundant = 1, SampleRate = 48000, Freq = 4_000, Amp = 1.0f };
-    public static DPSKSymbolOption option2 =
-        new() { NumSymbols = 2, NumRedundant = 2, SampleRate = 48000, Freq = 8_000, Amp = 1.0f };
+    public static int sampleRate = 48_000;
 
-    public static ChirpSymbolOption chirpOptionAir = new() {
-        NumSymbols = 2,
-        Duration = 0.005f, // Read config or something
-        SampleRate = 48_000,
-        FreqA = 3_000,  // Read config or something
-        FreqB = 10_000, // Read config or something
-        Amp = 1.0f,
-    };
-    public static ChirpSymbolOption chirpOption = new() {
-        NumSymbols = 2,
-        Duration = 0.001f, // Read config or something
-        SampleRate = 48_000,
-        FreqA = 2_000,  // Read config or something
-        FreqB = 16_000, // Read config or something
-        Amp = 1.0f,
-    };
+    public static DPSKSymbolOption[] options = [
+        new(NumRedundant: 1, SampleRate: 48000, Freq: 4_000),
+        new(NumRedundant: 2, SampleRate: 48000, Freq: 8_000),
+    ];
+    // public static DPSKSymbolOption option =
+    //     new() { NumSymbols = 2, NumRedundant = 1, SampleRate = 48000, Freq = 4_000, Amp = 1.0f };
+    // public static DPSKSymbolOption option2 =
+    //     new() { NumSymbols = 2, NumRedundant = 2, SampleRate = 48000, Freq = 8_000, Amp = 1.0f };
 
-    public static LineSymbolOption lineOption = new() {
-        NumSymbols = 2,
-        NumSamplesPerSymbol = 3,
-        Amp = 1.0f,
-    };
+    public static ChirpSymbolOption chirpOptionAir =
+        new(Duration: 0.005f, // Read config or something
+            SampleRate: 48_000,
+            FreqA: 3_000, // Read config or something
+            FreqB: 10_000 // Read config or something
+        );
 
-    public static TriSymbolOption triOption = new() {
-        NumSymbols = 2,
-        NumSamplesPerSymbol = 3,
-        Amp = 1.0f,
-    };
+    public static ChirpSymbolOption chirpOption =
+        new(Duration: 0.001f, // Read config or something
+            SampleRate: 48_000,
+            FreqA: 2_000, // Read config or something
+            FreqB: 16_000 // Read config or something
+        );
+
+    public static LineSymbolOption lineOption = new(NumSamplesPerSymbol: 2);
+
+    public static TriSymbolOption triOption = new(NumSamplesPerSymbol: 2);
 
     public static float corrThresholdAir = 0.015f;
     public static float corrThreshold = 0.3f;

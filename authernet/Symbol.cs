@@ -20,11 +20,10 @@ public interface ISymbol<T>
     where T : INumber<T> {
     ReadOnlyMemory<ReadOnlyMemory<T>> Samples { get; }
     int NumSamplesPerSymbol { get; }
-    // public static abstract float[][] Get(TOption symbolOption);
 }
 
 public readonly record struct ChirpSymbolOption
-(int NumSymbols, float Duration, int SampleRate, float FreqA, float FreqB, float Amp = 1.0f)
+(float Duration, int SampleRate, float FreqA, float FreqB, float Amp = 1.0f)
 {
     public int NumSamplesPerSymbol => (int)(Duration * SampleRate);
 }
@@ -38,7 +37,7 @@ public readonly struct ChirpSymbol<T> : ISymbol<T>
     {
         NumSamplesPerSymbol = symbolOption.NumSamplesPerSymbol;
 
-        var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
+        var result = new ReadOnlyMemory<T>[2];
         var builder = new ChirpBuilder();
 
         var sig = builder.SetParameter("low", -symbolOption.Amp)
@@ -68,7 +67,7 @@ public readonly struct ChirpSymbol2<T> : ISymbol<T>
     {
         NumSamplesPerSymbol = symbolOption.NumSamplesPerSymbol;
 
-        var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
+        var result = new ReadOnlyMemory<T>[2];
         var buf = new double[symbolOption.NumSamplesPerSymbol];
         for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)
             buf[i] = (symbolOption.FreqA +
@@ -101,7 +100,7 @@ public readonly struct ChirpSymbol2<T> : ISymbol<T>
 }
 
 public readonly record struct DPSKSymbolOption
-(int NumSymbols, int NumRedundant, int SampleRate, float Freq, float Amp = 1.0f)
+(int NumRedundant, int SampleRate, float Freq, float Amp = 1.0f)
 {
     public int NumSamplesPerSymbol => (int)(SampleRate / Freq * NumRedundant);
 }
@@ -115,7 +114,7 @@ public readonly struct DPSKSymbol<T> : ISymbol<T>
     {
         NumSamplesPerSymbol = symbolOption.NumSamplesPerSymbol;
 
-        var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
+        var result = new ReadOnlyMemory<T>[2];
 
         // for (int i = 0; i < symbolOption.NumSymbols; i++)
         var sig = new SineBuilder()
@@ -137,7 +136,7 @@ public readonly struct DPSKSymbol<T> : ISymbol<T>
 }
 
 public readonly record struct LineSymbolOption
-(int NumSymbols, int NumSamplesPerSymbol, float Amp = 1.0f)
+(int NumSamplesPerSymbol, float Amp = 1.0f)
 {
 }
 
@@ -150,7 +149,7 @@ public readonly struct LineSymbol<T> : ISymbol<T>
     {
         NumSamplesPerSymbol = symbolOption.NumSamplesPerSymbol;
 
-        var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
+        var result = new ReadOnlyMemory<T>[2];
 
         var zero = new T[symbolOption.NumSamplesPerSymbol];
         zero.AsSpan().Fill(T.CreateChecked(-symbolOption.Amp));
@@ -167,7 +166,7 @@ public readonly struct LineSymbol<T> : ISymbol<T>
 }
 
 public readonly record struct TriSymbolOption
-(int NumSymbols, int NumSamplesPerSymbol, float Amp = 1.0f)
+(int NumSamplesPerSymbol, float Amp = 1.0f)
 {
 }
 
@@ -179,36 +178,23 @@ public readonly struct TriSymbol<T> : ISymbol<T>
     public TriSymbol(TriSymbolOption symbolOption)
     {
         NumSamplesPerSymbol = symbolOption.NumSamplesPerSymbol;
+        var result = new ReadOnlyMemory<T>[2];
 
-        var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
+        var interval = T.CreateChecked(1f / (symbolOption.NumSamplesPerSymbol - 1));
 
         var zero = new T[symbolOption.NumSamplesPerSymbol];
-        zero.AsSpan().Fill(T.CreateChecked(-symbolOption.Amp));
+        for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)
+            zero[i] = T.CreateChecked(-i) * interval;
+
         result[0] = zero;
 
         var one = new T[symbolOption.NumSamplesPerSymbol];
-        one.AsSpan().Fill(T.CreateChecked(symbolOption.Amp));
+        for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)
+            one[i] = T.CreateChecked(i) * interval;
+
         result[1] = one;
 
         Samples = result;
-        // NumSamplesPerSymbol = symbolOption.NumSamplesPerSymbol;
-        // var result = new ReadOnlyMemory<T>[symbolOption.NumSymbols];
-
-        // var interval = T.CreateChecked(1f / (symbolOption.NumSamplesPerSymbol - 1));
-
-        // var zero = new T[symbolOption.NumSamplesPerSymbol];
-        // for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)
-        //     zero[i] = T.CreateChecked(-i) * interval;
-
-        // result[0] = zero;
-
-        // var one = new T[symbolOption.NumSamplesPerSymbol];
-        // for (int i = 0; i < symbolOption.NumSamplesPerSymbol; i++)
-        //     one[i] = T.CreateChecked(i) * interval;
-
-        // result[1] = one;
-
-        // Samples = result;
     }
 
     public static implicit operator TriSymbol<T>(TriSymbolOption option) => new(option);

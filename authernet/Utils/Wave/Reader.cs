@@ -168,7 +168,6 @@ public readonly struct MonoSelectSampleReader<T>(IWaveReader<T> reader, WaveForm
     {
         var length = Math.Min(buffer.Length, Length);
         var readBuffer = ArrayPool<T>.Shared.Rent(channelCount * length);
-        // Span<T> readBuffer = stackalloc T[channelCount];
         buffer.Clear();
 
         var readed = reader.Read(readBuffer);
@@ -222,7 +221,6 @@ public static class WaveReaderExtension
                 8 => new PCMWaveToSampleReader<sbyte, T>(reader, newWaveFormat),
                 16 => new PCMWaveToSampleReader<short, T>(reader, newWaveFormat),
                 24 => new PCMWaveToSampleReader<Int24, T>(reader, newWaveFormat),
-                // 24 => new PCM24WaveToSampleReader<T>(reader, newWaveFormat),
                 32 => new PCMWaveToSampleReader<int, T>(reader, newWaveFormat),
                 _ => throw new NotSupportedException()
             },
