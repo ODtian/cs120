@@ -47,9 +47,11 @@ We implment an 3-layer acoustic link with C# (.NET 9) and ASIO or WASAPI, includ
 ## For new to the project
 - Buy a good speaker and microphone before you start project 1. Mono is recommanded.
 - Volume is the most important part in this project, adjust and find your best volume before you start implement the project! Be careful that higher volume is not always better due to the low quality of provided sound cards.
+- Whenever you find a good volume, base-band transmission is good enough to finish project 2&3&4. 
 - A virtual interface combined with Winodws integrated features can significantly reduce the work in project 3&4, however you won't be able to finish some optional tasks like NAT Traversal or IP Fragmentation unless using your own NAT implemention.
 - You will find these command useful:
   - `New-NetNat`: Setup a NAT in Windows.
   - `New-NetIPAddress`: Setup virtual interface IP address, it will also setup route table.
   - `Set-NetIpInterface -Forwarding`: Enable packet forwarding for the interface, open it to pass Star task. Also reminber disabling the NAT.
 - WSL provides mirrored interface, while Linux's `ping` and `curl` provide options to use certain interface. It is useful to debug your program without disconnecting other links.
+- You can find other reminders by reading the code!
