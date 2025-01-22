@@ -1,7 +1,7 @@
 
 using System.Threading.Channels;
 
-namespace CS120.TxRx;
+namespace Aether.NET.TxRx;
 
 public interface ITransmitter
 {

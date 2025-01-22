@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace CS120.Utils.Buffer;
+namespace Aether.NET.Utils.Buffer;
 
 public class ChunkedSequence<T>
 {

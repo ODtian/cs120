@@ -1,15 +1,15 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Numerics;
-using CS120.Modulate;
-using CS120.Symbol;
-using CS120.Utils;
-using CS120.Utils.Extension;
-using CS120.Utils.Wave;
+using Aether.NET.Modulate;
+using Aether.NET.Symbol;
+using Aether.NET.Utils;
+using Aether.NET.Utils.Extension;
+using Aether.NET.Utils.Wave;
 using DotNext;
 using NAudio.Wave;
 
-namespace CS120.Preamble;
+namespace Aether.NET.Preamble;
 public interface IPreamble<TSample>
     where TSample : INumber<TSample> {
     ReadOnlyMemory<TSample> Samples { get; }

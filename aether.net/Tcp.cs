@@ -1,6 +1,6 @@
 using PacketDotNet;
 
-namespace CS120.Tcp;
+namespace Aether.NET.Tcp;
 
 public class SeqHijack
 (uint hijack)

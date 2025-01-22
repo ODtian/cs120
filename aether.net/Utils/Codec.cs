@@ -2,7 +2,7 @@ using System.Collections;
 using System.Numerics;
 using STH1123.ReedSolomon;
 
-namespace CS120.Utils.Codec;
+namespace Aether.NET.Utils.Codec;
 
 public static class Codec4B5B
 {

@@ -1,7 +1,7 @@
 using System.IO.Pipelines;
 using System.Numerics;
 
-namespace CS120.Utils;
+namespace Aether.NET.Utils;
 
 public class CancelKeyPressCancellationTokenSource : IDisposable
 {

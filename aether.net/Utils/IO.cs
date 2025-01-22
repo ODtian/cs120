@@ -1,13 +1,13 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Numerics;
-using CS120.Utils.Extension;
+using Aether.NET.Utils.Extension;
 using NAudio.Wave;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using CS120.Mac;
-using CS120.Utils;
-using CS120.Utils.Codec;
+using Aether.NET.Mac;
+using Aether.NET.Utils;
+using Aether.NET.Utils.Codec;
 using STH1123.ReedSolomon;
 using System.Text.Json;
 using CommunityToolkit.HighPerformance;
@@ -17,11 +17,11 @@ using NAudio.Wave.Asio;
 using DotNext;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.Data.Matlab;
-using CS120.Utils.Wave.Provider;
+using Aether.NET.Utils.Wave.Provider;
 using static CS120.Utils.Wave.Provider.NotifySampleProvider;
-using CS120.Utils.Wave.Reader;
+using Aether.NET.Utils.Wave.Reader;
 
-namespace CS120.Utils.IO;
+namespace Aether.NET.Utils.IO;
 public interface IInChannel<T>
 {
     ValueTask<T?> ReadAsync(CancellationToken token = default);

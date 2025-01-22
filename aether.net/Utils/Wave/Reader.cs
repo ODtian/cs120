@@ -1,64 +1,18 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Numerics;
-using CS120.Utils.Extension;
+using Aether.NET.Utils.Extension;
 using NAudio.Wave;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using AuroraLib.Core;
 
-namespace CS120.Utils.Wave.Reader;
+namespace Aether.NET.Utils.Wave.Reader;
 public interface IWaveReader<T>
 {
     WaveFormat WaveFormat { get; }
     int Length { get; }
     ReadOnlySpan<T> Read(Span<T> buffer);
-    // bool Advance(int count);
-}
-
-public readonly struct PCM24WaveToSampleReader<TSample>(PipeReader reader, WaveFormat waveFormat) : IWaveReader<TSample>
-    where TSample : unmanaged, INumber<TSample>
-{
-    [StructLayout(LayoutKind.Sequential)]
-    readonly struct Int24
-    ()
-    {
-        private readonly byte byte1 = 0;
-        private readonly byte byte2 = 0;
-        private readonly byte byte3 = 0;
-
-        private int Value => byte1 | (byte2 << 8) | (byte3 << 16) | ((byte3 & 0x80) > 0 ? 0xFF : 0x00);
-
-        public static explicit operator int(Int24 value) => value.Value;
-    }
-
-    public readonly WaveFormat WaveFormat { get; } = waveFormat;
-    public static readonly TSample PCM24MaxValue = TSample.CreateChecked(8388608);
-    public readonly int Length => (int)(reader.GetLength() / 3L);
-    public readonly ReadOnlySpan<TSample> Read(Span<TSample> buffer)
-    {
-        if (reader.TryRead(out var result))
-        {
-            var remain = buffer.Length;
-            var resultBuffer = result.Buffer;
-            Span<Int24> shortBuffer = stackalloc Int24[1];
-            do
-            {
-                var currentSpan = resultBuffer.ConsumeCast(remain, shortBuffer);
-                if (currentSpan.Length == 0)
-                    break;
-                for (int i = 0; i < currentSpan.Length; i++)
-                    buffer[buffer.Length - remain + i] = TSample.CreateChecked((int)currentSpan[i]) / PCM24MaxValue;
-                remain -= currentSpan.Length;
-            } while (remain > 0);
-
-            reader.AdvanceTo(resultBuffer.Start);
-
-            return buffer[..(buffer.Length - remain)];
-        }
-
-        return default;
-    }
 }
 
 public readonly struct PCMWaveToSampleReader<TWave, TSample>(PipeReader reader, WaveFormat waveFormat)
@@ -132,7 +86,6 @@ public readonly struct MonoMixSampleReader<T>(IWaveReader<T> reader, WaveFormat 
     where T : unmanaged, INumber<T>
 {
     private readonly int channelCount = waveFormat.Channels;
-    private readonly int bytesPerSample = waveFormat.BitsPerSample / 8;
 
     private readonly T[] coffs = [T.One / T.CreateChecked(waveFormat.Channels)];
     public readonly WaveFormat WaveFormat { get; } = waveFormat;
@@ -142,7 +95,6 @@ public readonly struct MonoMixSampleReader<T>(IWaveReader<T> reader, WaveFormat 
     {
         var length = Math.Min(buffer.Length, Length);
         var readBuffer = ArrayPool<T>.Shared.Rent(channelCount * length);
-        // Span<T> readBuffer = stackalloc T[channelCount];
         buffer.Clear();
 
         var readed = reader.Read(readBuffer);

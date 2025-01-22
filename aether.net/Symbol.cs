@@ -2,7 +2,7 @@ using System.Numerics;
 using NWaves.Signals;
 using NWaves.Signals.Builders;
 
-namespace CS120.Symbol;
+namespace Aether.NET.Symbol;
 
 // public interface ISymbolOption
 // {

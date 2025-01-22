@@ -9,7 +9,7 @@ using NAudio.Wave;
 using System.CommandLine.Parsing;
 using System.Numerics;
 
-namespace CS120.Utils.Helpers;
+namespace Aether.NET.Utils.Helpers;
 public static partial class FileHelper
 {
     public static FileInfo? ParseSingleFileInfo(ArgumentResult result, bool checkExist = true)

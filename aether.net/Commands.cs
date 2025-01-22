@@ -4,31 +4,29 @@
 using System.CommandLine;
 using System.IO.Pipelines;
 using System.Text;
-using CS120.CarrierSense;
-using CS120.Modulate;
-using CS120.Packet;
-using CS120.Phy;
-using CS120.Preamble;
-using CS120.Utils;
-using CS120.Utils.Helpers;
+using Aether.NET.CarrierSense;
+using Aether.NET.Modulate;
+using Aether.NET.Packet;
+using Aether.NET.Phy;
+using Aether.NET.Preamble;
+using Aether.NET.Utils;
+using Aether.NET.Utils.Helpers;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
-using CS120.Utils.Wave;
-using CS120.Symbol;
-using CS120.Mac;
+using Aether.NET.Symbol;
+using Aether.NET.Mac;
 using System.Buffers;
 using DotNext;
 using WinTun;
 using System.Threading.Channels;
 using PacketDotNet;
 using System.Net;
-using System.CommandLine.Invocation;
-using CS120.Utils.Extension;
+using Aether.NET.Utils.Extension;
 using CommunityToolkit.HighPerformance;
-using CS120.Utils.IO;
+using Aether.NET.Utils.IO;
 using ARSoft.Tools.Net.Dns;
-using CS120.Tcp;
-namespace CS120.Commands;
+using Aether.NET.Tcp;
+namespace Aether.NET.Commands;
 
 public static class CommandTask
 {
@@ -166,9 +164,7 @@ public static class CommandTask
 
         var preamble = new ChirpPreamble<float>(Program.chirpOptionAir with { SampleRate = waveFormat.SampleRate });
 
-        var demodulator = new OFDMDemodulator<DPSKSymbol<float>, float>(
-            [Program.options[0], Program.options[1]], Program.dataLengthInByte
-        );
+        var demodulator = new OFDMDemodulator<DPSKSymbol<float>, float>([Program.options[0], Program.options[1]]);
         // var demodulator =
         //     new Demodulator<DPSKSymbol<float>, float>(Program.option with { SampleRate = waveFormat.SampleRate },
         //     136);
@@ -179,7 +175,8 @@ public static class CommandTask
             demodulator,
             new PreambleDetection<float>(
                 preamble, Program.corrThresholdAir, Program.smoothedEnergyFactor, Program.maxPeakFallingAir
-            )
+            ),
+            Program.dataLengthInByte
         );
 
         // var index = 0;
@@ -265,7 +262,7 @@ public static class CommandTask
         var demodSym = new LineSymbol<float>(Program.lineOption);
 
         var modulator = new Modulator<ChirpPreamble<float>, LineSymbol<float>>(modPreamble, modSym);
-        var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 78);
+        var demodulator = new Demodulator<LineSymbol<float>, float>(demodSym);
 
         // var modSym = new DPSKSymbol<float>(Program.option);
         // var demodSym = new DPSKSymbol<float>(Program.option);
@@ -278,7 +275,8 @@ public static class CommandTask
             new PreambleDetection<float>(
                 demodPreamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
             ),
-            new CarrierQuietSensor<float>(Program.carrierSenseThreshold)
+            new CarrierQuietSensor<float>(Program.carrierSenseThreshold),
+            78
         );
 
         await using var mac = new MacD(phyDuplex, phyDuplex, addressSource, addressDest, 1, 32);
@@ -402,27 +400,15 @@ public static class CommandTask
 
                             seqHijackProxy.Send(tcp);
                         }
-                        // if (isTcp && ipPacket.PayloadPacket is TcpPacket tcp &&
-                        //     tcp is { Synchronize : true, Acknowledgment : false })
-                        // {
-                        //     tcp.SequenceNumber = 0x12345678;
-                        //     tcp.UpdateTcpChecksum();
-                        //     packetArr = ipPacket.Bytes;
-                        // }
                         Console.WriteLine(ipPacket.ToString(StringOutputType.VerboseColored));
                         Console.WriteLine();
                         await tx.Writer.WriteAsync(new(ipPacket.Bytes), cts.Source.Token);
                     }
-                    // rx.TryWrite(packetArr);
                     session.ReleaseReceivePacket(packet);
                 }
                 else
                     session.WaitForRead(TimeSpan.MaxValue);
-                // session.WaitForRead(TimeSpan.FromMilliseconds(20));
             }
-            // x:
-            //     await tx.Writer.WriteAsync(new(Enumerable.Repeat<byte>(0x00, 64).ToArray()),
-            // cts.Source.Token);
         }
 
         async Task TunRxAsync()
@@ -472,6 +458,7 @@ public static class CommandTask
         var buf = new float[2048];
         asio.AudioAvailable += (s, e) =>
         {
+            
             var size = e.GetAsInterleavedSamples(buf);
             wave?.Write(buf.AsSpan(0, size).AsBytes());
         };
@@ -489,11 +476,9 @@ public static class CommandTask
         var modPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = sampleRate, Amp = 0.2f });
         var demodPreamble = new ChirpPreamble<float>(Program.chirpOption with { SampleRate = sampleRate });
 
-        var modSym = new LineSymbol<float>(Program.lineOption with { Amp = 0.2f });
-        var demodSym = new LineSymbol<float>(Program.lineOption);
-
-        var modulator = new Modulator<ChirpPreamble<float>, LineSymbol<float>>(modPreamble, modSym);
-        var demodulator = new Demodulator<LineSymbol<float>, float, ushort>(demodSym, 1600);
+        var modulator =
+            new Modulator<ChirpPreamble<float>, LineSymbol<float>>(modPreamble, Program.lineOption with { Amp = 0.2f });
+        var demodulator = new Demodulator<LineSymbol<float>, float>(Program.lineOption);
 
         // var modSym = new DPSKSymbol<float>(Program.option);
         // var demodSym = new DPSKSymbol<float>(Program.option);
@@ -506,14 +491,15 @@ public static class CommandTask
             new PreambleDetection<float>(
                 demodPreamble, Program.corrThreshold, Program.smoothedEnergyFactor, Program.maxPeakFalling
             ),
-            new CarrierQuietSensor<float>(Program.carrierSenseThreshold)
+            new CarrierQuietSensor<float>(Program.carrierSenseThreshold),
+            1600
         );
 
         await using var mac = new MacD(phyDuplex, phyDuplex, addressSource, addressDest, 1, 32);
 
         // await Task.Delay(5000);
-        var warmup = new WarmupPreamble<LineSymbol<float>, float>(demodSym, 512);
-        await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
+        // var warmup = new WarmupPreamble<LineSymbol<float>, float>(demodSym, 512);
+        // await audioOut.WriteAsync(new ReadOnlySequence<float>(warmup.Samples), cts.Source.Token);
         Console.WriteLine("Ready");
 
         async Task MacTxAsync()

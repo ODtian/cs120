@@ -8,7 +8,7 @@ using CommunityToolkit.HighPerformance;
 using NAudio.Wave;
 using STH1123.ReedSolomon;
 
-namespace CS120.Utils.Extension;
+namespace Aether.NET.Utils.Extension;
 
 public static class IEnumerableExtension
 {
@@ -18,51 +18,10 @@ public static class IEnumerableExtension
             for (var i = 0; i < item.Length; i++)
                 yield return item.Span[i];
     }
-    public static void TakeInto<T>(this IEnumerable<T> source, Span<T> buffer)
-    {
-        var index = 0;
-        foreach (var item in source.Take(buffer.Length))
-        {
-            buffer[index++] = item;
-        }
-    }
-    public static IEnumerable<T> TakeBlocked<T>(this BlockingCollection<T> source, int count)
-    {
-
-        while (!source.IsAddingCompleted && source.Count < count)
-        {
-        }
-        return source.Take(count);
-    }
-}
-
-public static class SampleProviderExtension
-{
-    public static int ReadExact<T>(this T sampleProvider, float[] buffer, int offset, int count)
-        where T : ISampleProvider
-    {
-        var readed = 0;
-        while (count > 0)
-        {
-            var read = sampleProvider.Read(buffer, offset, count);
-            if (read == 0)
-                break;
-
-            readed += read;
-
-            offset += read;
-            count -= read;
-        }
-        return readed;
-    }
 }
 
 public static class ReaderExtension
 {
-    public static bool IsFinished<T>(this ChannelReader<T> reader)
-    {
-        return reader.Completion.IsCompleted && !reader.TryPeek(out _);
-    }
 
     public static async ValueTask<T> TryReadAsync<T>(this ChannelReader<T> reader, CancellationToken ct = default)
         where T : struct
@@ -74,35 +33,10 @@ public static class ReaderExtension
         return default;
     }
 
-    // public static bool IsFinished(this PipeReader pipeReader)
-    // {
-    //     if (pipeReader.TryRead(out var readResult))
-    //     {
-    //         pipeReader.AdvanceTo(readResult.Buffer.Start);
-    //         return readResult.IsFinished();
-    //     }
-    //     return false;
-    // }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsFinished(this ReadResult readResult)
     {
         return (readResult.IsCompleted || readResult.IsCanceled) && readResult.Buffer.IsEmpty;
-    }
-}
-
-public static class WaveFormatExtension
-{
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int ConvertLatencyToSampleSize(this WaveFormat waveFormat, float latency)
-    {
-        return (int)(waveFormat.SampleRate * latency) * waveFormat.Channels;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int ConvertSamplesToByteSize(this WaveFormat waveFormat, int samples)
-    {
-        return samples * waveFormat.BitsPerSample / 8;
     }
 }
 

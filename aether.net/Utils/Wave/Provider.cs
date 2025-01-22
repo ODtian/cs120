@@ -1,24 +1,12 @@
 using System.Buffers;
 using System.IO.Pipelines;
-using System.Numerics;
-using CS120.Utils.Extension;
+using Aether.NET.Utils.Extension;
 using NAudio.Wave;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using CS120.Mac;
-using CS120.Utils;
-using CS120.Utils.Codec;
-using STH1123.ReedSolomon;
-using System.Text.Json;
 using CommunityToolkit.HighPerformance;
 using System.Threading.Channels;
-using Nerdbank.Streams;
-using NAudio.Wave.Asio;
 using DotNext;
-using MathNet.Numerics.LinearAlgebra;
-using MathNet.Numerics.Data.Matlab;
 
-namespace CS120.Utils.Wave.Provider;
+namespace Aether.NET.Utils.Wave.Provider;
 
 public class StreamWaveProvider
 (WaveFormat waveFormat, Stream stream) : IWaveProvider
@@ -28,11 +16,11 @@ public class StreamWaveProvider
 
     public int Read(byte[] buffer, int offset, int count)
     {
-        // Stream.L
         return Stream.Read(buffer, offset, count);
     }
 }
 
+[Obsolete("Useless provider since ReadOnlySequence<T> based provider is available")]
 public class PipeViewProvider : IWaveProvider, ISampleProvider
 {
     public PipeReader? Reader { get; }
@@ -78,12 +66,9 @@ public class PipeViewProvider : IWaveProvider, ISampleProvider
     public void AdvanceSamples(int numSamples)
     {
         if (Reader == null)
-        {
             return;
-        }
         if (Reader.TryRead(out var result))
         {
-            // Console.WriteLine(result.Buffer.Length);
             Reader.AdvanceTo(
                 result.Buffer.GetPosition(Math.Min(result.Buffer.Length, numSamples * WaveFormat.BitsPerSample / 8))
             );
@@ -133,10 +118,8 @@ public class NotifySampleProvider
 
     public int Read(float[] buffer, int offset, int count)
     {
-        // Console.WriteLine(count);
         if (currentTask.Data.IsEmpty)
         {
-            // Console.WriteLine(currentTask.Task is null);
             currentTask.Task?.TrySetResult(true);
             while (true)
             {
@@ -144,11 +127,9 @@ public class NotifySampleProvider
                 {
                     if (channelReader.Completion.IsCompleted)
                         return 0;
-                    // if (readed == 0)
-                    {
-                        buffer.AsSpan(offset, count).Clear();
-                        return count;
-                    }
+
+                    buffer.AsSpan(offset, count).Clear();
+                    return count;
                 }
 
                 if (currentTask.Task.Task.IsCompleted || currentTask.Data.IsEmpty)
@@ -159,22 +140,10 @@ public class NotifySampleProvider
         }
 
         var readed = (int)Math.Min(count, currentTask.Data.Length);
-        // if (readed != count)
-        buffer.AsSpan(offset + readed, count - readed).Clear();
+
+        // buffer.AsSpan(offset + readed, count - readed).Clear();
         currentTask.Data.Slice(0, readed).CopyTo(buffer.AsSpan(offset, readed));
         currentTask.Data = currentTask.Data.Slice(readed);
-
-        // if (currentTask.Data.IsEmpty)
-        // {
-        //     // Console.WriteLine(currentTask.Task is null);
-        //     currentTask.Task?.TrySetResult(true);
-        // }
-        // Console.WriteLine(readed);
-        // for (int i = 0; i < readed; i++)
-        // {
-        //     Console.WriteLine(buffer[i + offset]);
-        // }
-        // return readed;
         return count;
     }
 }
